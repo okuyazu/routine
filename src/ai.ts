@@ -19,6 +19,7 @@
  */
 
 import { GeneratedContent } from './types';
+import { findLibraryConcept } from './library';
 
 /** Pretend the AI is "thinking" so we can see the loading state. */
 function delay(ms: number): Promise<void> {
@@ -26,88 +27,8 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * A few richly written concepts so demos look great out of the box.
- * The key is a lowercase search term; if the user's title contains it,
- * we use this content.
- */
-const CURATED: Record<string, GeneratedContent> = {
-  stoicism: {
-    summary:
-      'An ancient philosophy of focusing only on what you control and meeting the rest with calm.',
-    lesson:
-      'Stoicism began in Athens around 300 BCE and was later shaped by figures like Epictetus, Seneca, and the Roman emperor Marcus Aurelius. Its central move is the "dichotomy of control": some things are up to us (our judgments, choices, and actions) and some are not (other people, outcomes, the past, our reputation). Suffering, the Stoics argued, comes not from events themselves but from our judgments about them.\n\nThe goal is not to suppress emotion but to train it — to want what actually happens, and to act with virtue (wisdom, courage, justice, self-control) regardless of results. If you give your best effort and the outcome goes badly, you have still done the only thing that was ever truly yours to do.',
-    keyIdeas: [
-      'Separate what you control (your choices) from what you don\'t (outcomes, others).',
-      'Events are neutral; your judgments about them cause distress.',
-      'Virtue — not success, wealth, or reputation — is the only true good.',
-      'Prepare in advance for setbacks so they lose their power to shock you.',
-    ],
-    practicalPoints: [
-      'Before a stressful event, ask: "What here is actually in my control?"',
-      'When upset, name the judgment behind the feeling, then question it.',
-      'Each morning, briefly rehearse difficulties you might meet that day.',
-      'Each evening, review: where did I act with virtue, where did I slip?',
-    ],
-  },
-  existentialism: {
-    summary:
-      'The view that life has no built-in meaning — so you are radically free, and responsible, to create your own.',
-    lesson:
-      'Existentialism is less a single doctrine than a shared starting point developed by thinkers such as Kierkegaard, Nietzsche, Sartre, and de Beauvoir. Sartre summarized it as "existence precedes essence": unlike a knife, which is made for a purpose, a human being simply exists first and must then decide what to become. There is no fixed human nature handing you your purpose.\n\nThat freedom is exhilarating and heavy. Because nothing outside you dictates your values, every choice is genuinely yours — and you cannot hide behind "I had no choice" (what Sartre called bad faith). Authenticity means owning that freedom, choosing deliberately, and accepting responsibility for the self you build through your actions.',
-    keyIdeas: [
-      'There is no pre-given meaning; you must create your own.',
-      '"Existence precedes essence" — you define yourself through action.',
-      'Radical freedom brings radical responsibility.',
-      'Living authentically means refusing to hide behind excuses ("bad faith").',
-    ],
-    practicalPoints: [
-      'Notice where you say "I have to" — often it\'s really "I choose to".',
-      'Make one values-driven choice today that you\'d own even if it fails.',
-      'Audit borrowed goals: which are truly yours, which were just handed to you?',
-      'Treat each decision as a small vote for the person you\'re becoming.',
-    ],
-  },
-  absurdism: {
-    summary:
-      'Albert Camus\' response to a meaningless universe: rebel, and live fully anyway.',
-    lesson:
-      'Camus described the "absurd" as the collision between our deep human craving for meaning and a silent, indifferent universe that offers none. He rejected two escapes: suicide (giving up on life) and blind faith or ideology (giving up on honest thinking). Both, he argued, dodge the tension rather than face it.\n\nHis alternative is revolt: to keep living, and to squeeze richness out of experience, precisely because there is no cosmic guarantee. In "The Myth of Sisyphus" he imagines the man condemned to roll a boulder uphill forever — and concludes "one must imagine Sisyphus happy," because Sisyphus owns his fate and finds meaning in the struggle itself.',
-    keyIdeas: [
-      'The "absurd" is the clash between our need for meaning and a silent universe.',
-      'Don\'t escape it through despair or false certainty — face it honestly.',
-      'Revolt: keep living fully and create value without cosmic guarantees.',
-      '"One must imagine Sisyphus happy" — meaning is found in the struggle.',
-    ],
-    practicalPoints: [
-      'Pursue things for their intrinsic joy, not just their outcome.',
-      'When meaning feels absent, choose an act of "revolt": create, help, savor.',
-      'Hold beliefs honestly — resist the comfort of easy certainty.',
-      'Find the "happy Sisyphus" in a repetitive task by owning it fully.',
-    ],
-  },
-  epicureanism: {
-    summary:
-      'The pursuit of a happy life through modest, lasting pleasures and freedom from fear.',
-    lesson:
-      'Epicurus taught that pleasure is the goal of life — but he meant something calmer than the modern word suggests. The highest pleasure is ataraxia: a tranquil mind free from anxiety, and a body free from pain. Wild indulgence actually undermines this, because it breeds craving, dependency, and regret.\n\nEpicurus argued that most fears are unnecessary. Death "is nothing to us," since when we exist death is not present, and when death is present we do not exist. By reducing desires to the natural and necessary (food, shelter, friendship, understanding) and letting go of empty ones (fame, luxury, power), we reach a stable, self-sufficient contentment.',
-    keyIdeas: [
-      'The aim is tranquility (ataraxia), not intense or constant stimulation.',
-      'Distinguish natural, necessary desires from empty ones.',
-      'Simple, repeatable pleasures beat rare, extravagant ones.',
-      'Friendship and freedom from fear are among life\'s greatest goods.',
-    ],
-    practicalPoints: [
-      'Before a purchase, ask: is this a natural need or an empty craving?',
-      'Invest in friendships — Epicurus ranked them above luxury.',
-      'Practice enjoying simple pleasures fully instead of chasing bigger ones.',
-      'Name a fear, then examine whether it\'s truly worth the anxiety it costs.',
-    ],
-  },
-};
-
-/**
  * Build reasonable generic content for ANY concept the user types,
- * when we don't have a curated entry. It's templated, but written to
+ * when it isn't in the built-in library. It's templated, but written to
  * read naturally and give a real structure to think with.
  */
 function genericContent(title: string): GeneratedContent {
@@ -149,13 +70,12 @@ export async function generateConcept(title: string): Promise<GeneratedContent> 
   // Simulate "thinking" time so the loading UI is visible (1.2s).
   await delay(1200);
 
-  // If the title matches one of our curated concepts, use that.
-  const lower = title.toLowerCase();
-  for (const key of Object.keys(CURATED)) {
-    if (lower.includes(key)) return CURATED[key];
-  }
+  // If the title matches a concept in our built-in library, use that.
+  const fromLibrary = findLibraryConcept(title);
+  if (fromLibrary) return fromLibrary.content;
 
   // Otherwise, return solid generic content.
+  // (This is the "long tail" that real AI will handle later.)
   return genericContent(title);
 }
 

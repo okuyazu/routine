@@ -8,6 +8,7 @@
 
 export type RootStackParamList = {
   Home: undefined; // Home needs no data.
+  Library: undefined; // Browse the built-in library.
   AddConcept: undefined; // Add screen needs no data.
   ConceptDetail: { id: string }; // Detail screen needs which concept to show.
 };

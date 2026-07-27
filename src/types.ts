@@ -21,6 +21,15 @@ export type GeneratedContent = {
   practicalPoints: string[];
 };
 
+/**
+ * A single flashcard: a question on the front, the answer on the back.
+ * Used by the quiz / review mode.
+ */
+export type Flashcard = {
+  front: string;
+  back: string;
+};
+
 /** Where a concept is in its lifecycle. Used to show spinners / errors. */
 export type ConceptStatus = 'generating' | 'ready' | 'error';
 
@@ -38,6 +47,8 @@ export type Concept = {
   status: ConceptStatus;
   /** The generated content (present once status === 'ready'). */
   content?: GeneratedContent;
+  /** Flashcards for quiz/review mode (present when we have them). */
+  flashcards?: Flashcard[];
   /** An error message (present only if status === 'error'). */
   error?: string;
 };

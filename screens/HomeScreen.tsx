@@ -31,8 +31,17 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Philosophy</Text>
-        <Text style={styles.subtitle}>Your concepts, taught by AI</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Philosophy</Text>
+          <Text style={styles.subtitle}>Your personal library</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.browseBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('Library')}
+        >
+          <Text style={styles.browseBtnText}>📚 Browse</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -40,7 +49,7 @@ export default function HomeScreen({ navigation }: Props) {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : concepts.length === 0 ? (
-        <EmptyState />
+        <EmptyState onBrowse={() => navigation.navigate('Library')} />
       ) : (
         <FlatList
           data={concepts}
@@ -97,15 +106,22 @@ function statusLabel(concept: Concept): string {
 }
 
 /** Shown when the user has no concepts yet. */
-function EmptyState() {
+function EmptyState({ onBrowse }: { onBrowse: () => void }) {
   return (
     <View style={styles.center}>
       <Text style={styles.emptyEmoji}>🏛️</Text>
       <Text style={styles.emptyTitle}>Start your library</Text>
       <Text style={styles.emptyBody}>
-        Add any philosophical concept — like “Stoicism” or “the meaning of
-        life” — and get a lesson, key ideas, and practical points.
+        Browse the built-in library of great concepts, or add any concept of
+        your own — each comes with a lesson, key ideas, and practical points.
       </Text>
+      <TouchableOpacity
+        style={styles.emptyBrowseBtn}
+        activeOpacity={0.85}
+        onPress={onBrowse}
+      >
+        <Text style={styles.emptyBrowseText}>📚 Browse the library</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -116,9 +132,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   title: { fontSize: fontSize.xxl, fontWeight: '700', color: colors.text },
   subtitle: { fontSize: fontSize.md, color: colors.textMuted, marginTop: 2 },
+  browseBtn: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  browseBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600' },
   list: { padding: spacing.lg, paddingBottom: 120, gap: spacing.md },
   card: {
     backgroundColor: colors.surface,
@@ -155,6 +182,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  emptyBrowseBtn: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.lg,
+  },
+  emptyBrowseText: {
+    color: colors.textOnPrimary,
+    fontSize: fontSize.md,
+    fontWeight: '600',
   },
   fab: {
     position: 'absolute',

@@ -24,6 +24,7 @@ import React, {
 import { Concept } from './types';
 import { loadConcepts, saveConcepts } from './storage';
 import { generateConcept } from './ai';
+import { LibraryConcept, flashcardsForTitle } from './library';
 
 // The set of things a screen can read/do through this context.
 type ConceptsContextValue = {
@@ -32,6 +33,11 @@ type ConceptsContextValue = {
   loading: boolean;
   /** Add a new concept and start generating its content. Returns its id. */
   addConcept: (title: string) => Promise<string>;
+  /**
+   * Add a concept straight from the built-in library — instantly ready,
+   * no generation delay. If it's already saved, returns the existing id.
+   */
+  addFromLibrary: (item: LibraryConcept) => string;
   /** Re-run generation for an existing concept (e.g. after an error). */
   regenerate: (id: string) => Promise<void>;
   /** Delete a concept. */
@@ -87,9 +93,13 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
 
     try {
       const content = await generateConcept(title);
+      // If this concept is in the library, it comes with flashcards.
+      const flashcards = flashcardsForTitle(title);
       setConcepts((prev) =>
         prev.map((c) =>
-          c.id === id ? { ...c, status: 'ready', content, error: undefined } : c
+          c.id === id
+            ? { ...c, status: 'ready', content, flashcards, error: undefined }
+            : c
         )
       );
     } catch (err) {
@@ -120,6 +130,29 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
     [runGeneration]
   );
 
+  const addFromLibrary = useCallback(
+    (item: LibraryConcept): string => {
+      // If we already have this concept (same title), just return its id.
+      const existing = concepts.find(
+        (c) => c.title.toLowerCase() === item.title.toLowerCase()
+      );
+      if (existing) return existing.id;
+
+      const id = makeId();
+      const newConcept: Concept = {
+        id,
+        title: item.title,
+        createdAt: Date.now(),
+        status: 'ready', // library content is ready immediately
+        content: item.content,
+        flashcards: item.flashcards,
+      };
+      setConcepts((prev) => [newConcept, ...prev]);
+      return id;
+    },
+    [concepts]
+  );
+
   const regenerate = useCallback(
     async (id: string) => {
       const concept = concepts.find((c) => c.id === id);
@@ -141,6 +174,7 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
     concepts,
     loading,
     addConcept,
+    addFromLibrary,
     regenerate,
     removeConcept,
     getConcept,

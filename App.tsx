@@ -19,6 +19,7 @@ import { ConceptsProvider } from './src/ConceptsContext';
 import { colors } from './src/theme';
 
 import HomeScreen from './screens/HomeScreen';
+import LibraryScreen from './screens/LibraryScreen';
 import AddConceptScreen from './screens/AddConceptScreen';
 import ConceptDetailScreen from './screens/ConceptDetailScreen';
 
@@ -44,6 +45,11 @@ export default function App() {
               name="Home"
               component={HomeScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Library"
+              component={LibraryScreen}
+              options={{ title: 'Library' }}
             />
             <Stack.Screen
               name="AddConcept"
