@@ -85,6 +85,17 @@ export default function ConceptDetailScreen({ route, navigation }: Props) {
       {concept.status === 'ready' && concept.content && (
         <View style={{ gap: spacing.lg }}>
           <ContentSections content={concept.content} />
+          {concept.flashcards && concept.flashcards.length > 0 && (
+            <TouchableOpacity
+              style={styles.reviewBtn}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('Review', { conceptId: id })}
+            >
+              <Text style={styles.reviewBtnText}>
+                🎴 Review flashcards ({concept.flashcards.length})
+              </Text>
+            </TouchableOpacity>
+          )}
           <GoDeeper
             concept={concept}
             isPremium={isPremium}
@@ -324,6 +335,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
+  reviewBtn: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+  },
+  reviewBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '700' },
   deleteBtn: {
     marginTop: spacing.xl,
     alignSelf: 'center',

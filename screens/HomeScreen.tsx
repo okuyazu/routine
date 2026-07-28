@@ -31,16 +31,24 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Philosophy</Text>
-          <Text style={styles.subtitle}>Your personal library</Text>
-        </View>
+        <Text style={styles.title}>Philosophy</Text>
+        <Text style={styles.subtitle}>Your personal library</Text>
+      </View>
+
+      <View style={styles.actionsRow}>
         <TouchableOpacity
-          style={styles.browseBtn}
+          style={styles.actionBtn}
           activeOpacity={0.8}
           onPress={() => navigation.navigate('Library')}
         >
-          <Text style={styles.browseBtnText}>📚 Browse</Text>
+          <Text style={styles.actionBtnText}>📚 Browse library</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('Review', {})}
+        >
+          <Text style={styles.actionBtnText}>🎴 Quiz</Text>
         </TouchableOpacity>
       </View>
 
@@ -132,20 +140,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   title: { fontSize: fontSize.xxl, fontWeight: '700', color: colors.text },
   subtitle: { fontSize: fontSize.md, color: colors.textMuted, marginTop: 2 },
-  browseBtn: {
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  actionBtn: {
+    flex: 1,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.lg,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
   },
-  browseBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600' },
+  actionBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600' },
   list: { padding: spacing.lg, paddingBottom: 120, gap: spacing.md },
   card: {
     backgroundColor: colors.surface,

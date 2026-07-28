@@ -11,4 +11,7 @@ export type RootStackParamList = {
   Library: undefined; // Browse the built-in library.
   AddConcept: undefined; // Add screen needs no data.
   ConceptDetail: { id: string }; // Detail screen needs which concept to show.
+  // Flashcard review. With a conceptId -> review that one concept (free).
+  // Without one -> mixed review across the whole library (premium).
+  Review: { conceptId?: string };
 };

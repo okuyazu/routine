@@ -23,6 +23,7 @@ import HomeScreen from './screens/HomeScreen';
 import LibraryScreen from './screens/LibraryScreen';
 import AddConceptScreen from './screens/AddConceptScreen';
 import ConceptDetailScreen from './screens/ConceptDetailScreen';
+import ReviewScreen from './screens/ReviewScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -62,6 +63,11 @@ export default function App() {
               name="ConceptDetail"
               component={ConceptDetailScreen}
               options={{ title: 'Concept' }}
+            />
+            <Stack.Screen
+              name="Review"
+              component={ReviewScreen}
+              options={{ title: 'Review' }}
             />
           </Stack.Navigator>
         </NavigationContainer>
