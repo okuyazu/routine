@@ -24,7 +24,31 @@ import React, {
 import { Concept } from './types';
 import { loadConcepts, saveConcepts } from './storage';
 import { generateConcept } from './ai';
-import { LibraryConcept, flashcardsForTitle, deepDiveForTitle } from './library';
+import {
+  LibraryConcept,
+  flashcardsForTitle,
+  deepDiveForTitle,
+  findLibraryConcept,
+} from './library';
+
+/**
+ * Refresh saved concepts against the current library. Concepts added in
+ * an older version may be missing newer fields (like deep dives). If a
+ * saved concept matches a library entry by title, we re-attach its latest
+ * content, flashcards, and deep dive so updates flow through automatically.
+ */
+function hydrateFromLibrary(concepts: Concept[]): Concept[] {
+  return concepts.map((c) => {
+    const lib = findLibraryConcept(c.title);
+    if (!lib) return c; // custom/AI concept — leave it untouched
+    return {
+      ...c,
+      content: c.content ?? lib.content,
+      flashcards: lib.flashcards,
+      deepDive: lib.deepDive,
+    };
+  });
+}
 
 // The set of things a screen can read/do through this context.
 type ConceptsContextValue = {
@@ -63,7 +87,7 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
     (async () => {
       const saved = await loadConcepts();
       if (active) {
-        setConcepts(saved);
+        setConcepts(hydrateFromLibrary(saved));
         setLoading(false);
       }
     })();

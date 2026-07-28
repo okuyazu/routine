@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../src/navigation';
@@ -47,16 +48,22 @@ export default function ConceptDetailScreen({ route, navigation }: Props) {
   if (!concept) return null;
 
   function confirmDelete() {
+    const doDelete = () => {
+      removeConcept(id);
+      navigation.goBack();
+    };
+
+    // React Native's Alert doesn't work in a web browser, so on web we use
+    // the browser's built-in confirm dialog instead.
+    if (Platform.OS === 'web') {
+      const ok = (globalThis as any).confirm?.(`Remove “${concept!.title}”?`);
+      if (ok) doDelete();
+      return;
+    }
+
     Alert.alert('Delete concept', `Remove “${concept!.title}”?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          removeConcept(id);
-          navigation.goBack();
-        },
-      },
+      { text: 'Delete', style: 'destructive', onPress: doDelete },
     ]);
   }
 
