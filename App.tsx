@@ -16,6 +16,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from './src/navigation';
 import { ConceptsProvider } from './src/ConceptsContext';
+import { PremiumProvider } from './src/premium';
 import { colors } from './src/theme';
 
 import HomeScreen from './screens/HomeScreen';
@@ -28,6 +29,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
     <SafeAreaProvider>
+      <PremiumProvider>
       <ConceptsProvider>
         <NavigationContainer>
           <StatusBar style="dark" />
@@ -64,6 +66,7 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
       </ConceptsProvider>
+      </PremiumProvider>
     </SafeAreaProvider>
   );
 }

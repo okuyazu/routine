@@ -24,7 +24,7 @@ import React, {
 import { Concept } from './types';
 import { loadConcepts, saveConcepts } from './storage';
 import { generateConcept } from './ai';
-import { LibraryConcept, flashcardsForTitle } from './library';
+import { LibraryConcept, flashcardsForTitle, deepDiveForTitle } from './library';
 
 // The set of things a screen can read/do through this context.
 type ConceptsContextValue = {
@@ -93,12 +93,14 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
 
     try {
       const content = await generateConcept(title);
-      // If this concept is in the library, it comes with flashcards.
+      // If this concept is in the library, it comes with flashcards and
+      // (sometimes) premium deep-dive content.
       const flashcards = flashcardsForTitle(title);
+      const deepDive = deepDiveForTitle(title);
       setConcepts((prev) =>
         prev.map((c) =>
           c.id === id
-            ? { ...c, status: 'ready', content, flashcards, error: undefined }
+            ? { ...c, status: 'ready', content, flashcards, deepDive, error: undefined }
             : c
         )
       );
@@ -146,6 +148,7 @@ export function ConceptsProvider({ children }: { children: ReactNode }) {
         status: 'ready', // library content is ready immediately
         content: item.content,
         flashcards: item.flashcards,
+        deepDive: item.deepDive,
       };
       setConcepts((prev) => [newConcept, ...prev]);
       return id;

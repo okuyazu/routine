@@ -30,6 +30,16 @@ export type Flashcard = {
   back: string;
 };
 
+/**
+ * One section of premium "deep dive" content — a heading and a body of
+ * text. A concept's deep dive is a list of these (History, Key Thinkers,
+ * etc.). This is the paid, "go deeper" material.
+ */
+export type DeepDiveSection = {
+  heading: string;
+  body: string;
+};
+
 /** Where a concept is in its lifecycle. Used to show spinners / errors. */
 export type ConceptStatus = 'generating' | 'ready' | 'error';
 
@@ -49,6 +59,11 @@ export type Concept = {
   content?: GeneratedContent;
   /** Flashcards for quiz/review mode (present when we have them). */
   flashcards?: Flashcard[];
+  /**
+   * Premium "deep dive" sections. Present only for concepts that have
+   * paid depth authored. Shown locked until the user unlocks premium.
+   */
+  deepDive?: DeepDiveSection[];
   /** An error message (present only if status === 'error'). */
   error?: string;
 };

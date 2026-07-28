@@ -22,14 +22,16 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../src/navigation';
 import { useConcepts } from '../src/ConceptsContext';
+import { usePremium } from '../src/premium';
 import { colors, spacing, fontSize, radius } from '../src/theme';
-import { GeneratedContent } from '../src/types';
+import { GeneratedContent, Concept } from '../src/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ConceptDetail'>;
 
 export default function ConceptDetailScreen({ route, navigation }: Props) {
   const { id } = route.params;
   const { getConcept, regenerate, removeConcept } = useConcepts();
+  const { isPremium, unlock, lock } = usePremium();
   const concept = getConcept(id);
 
   // Put the concept title in the navigation bar.
@@ -74,7 +76,15 @@ export default function ConceptDetailScreen({ route, navigation }: Props) {
       )}
 
       {concept.status === 'ready' && concept.content && (
-        <ContentSections content={concept.content} />
+        <View style={{ gap: spacing.lg }}>
+          <ContentSections content={concept.content} />
+          <GoDeeper
+            concept={concept}
+            isPremium={isPremium}
+            onUnlock={unlock}
+            onLock={lock}
+          />
+        </View>
       )}
 
       <TouchableOpacity style={styles.deleteBtn} onPress={confirmDelete}>
@@ -129,6 +139,86 @@ function ContentSections({ content }: { content: GeneratedContent }) {
           <BulletRow key={i} text={point} accent />
         ))}
       </Section>
+    </View>
+  );
+}
+
+/**
+ * The premium "Go Deeper" section. Three states:
+ *   1. No deep-dive authored yet -> a "coming soon" note.
+ *   2. Locked -> a teaser listing what's inside + an unlock button.
+ *   3. Unlocked (premium) -> the full deep-dive sections.
+ */
+function GoDeeper({
+  concept,
+  isPremium,
+  onUnlock,
+  onLock,
+}: {
+  concept: Concept;
+  isPremium: boolean;
+  onUnlock: () => void;
+  onLock: () => void;
+}) {
+  const deepDive = concept.deepDive;
+
+  // 1. No premium content authored for this concept yet.
+  if (!deepDive || deepDive.length === 0) {
+    return (
+      <View style={styles.comingSoon}>
+        <Text style={styles.comingSoonTitle}>🔒 Go Deeper</Text>
+        <Text style={styles.comingSoonText}>
+          An in-depth deep dive for this concept is coming soon.
+        </Text>
+      </View>
+    );
+  }
+
+  // 3. Unlocked — show the full deep dive.
+  if (isPremium) {
+    return (
+      <View style={{ gap: spacing.lg }}>
+        <View style={styles.unlockedHeader}>
+          <Text style={styles.sectionTitle}>Go Deeper</Text>
+          <Text style={styles.premiumTag}>✓ Premium</Text>
+        </View>
+        {deepDive.map((s, i) => (
+          <Section key={i} title={s.heading}>
+            <Text style={styles.paragraph}>{s.body}</Text>
+          </Section>
+        ))}
+        <TouchableOpacity onPress={onLock}>
+          <Text style={styles.relock}>🔒 Lock again (for testing)</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // 2. Locked — teaser + unlock button.
+  return (
+    <View style={styles.paywall}>
+      <Text style={styles.paywallTitle}>🔒 Go Deeper</Text>
+      <Text style={styles.paywallPitch}>
+        Unlock the in-depth deep dive for {concept.title}:
+      </Text>
+      <View style={styles.paywallList}>
+        {deepDive.map((s, i) => (
+          <Text key={i} style={styles.paywallItem}>
+            •  {s.heading}
+          </Text>
+        ))}
+      </View>
+      <TouchableOpacity
+        style={styles.unlockBtn}
+        activeOpacity={0.85}
+        onPress={onUnlock}
+      >
+        <Text style={styles.unlockBtnText}>Unlock deep dive</Text>
+      </TouchableOpacity>
+      <Text style={styles.paywallNote}>
+        Demo build — no charge. In the finished app this opens the App Store /
+        Google Play purchase.
+      </Text>
     </View>
   );
 }
@@ -234,4 +324,70 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   deleteText: { color: colors.danger, fontSize: fontSize.md },
+
+  // --- "Go Deeper" premium section ---
+  comingSoon: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  comingSoonTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  comingSoonText: { fontSize: fontSize.md, color: colors.textMuted },
+  unlockedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  premiumTag: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  relock: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
+  paywall: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  paywallTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  paywallPitch: { fontSize: fontSize.md, color: colors.textMuted },
+  paywallList: { marginVertical: spacing.md, gap: spacing.xs },
+  paywallItem: { fontSize: fontSize.md, color: colors.text },
+  unlockBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+  },
+  unlockBtnText: {
+    color: '#3A2E00',
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+  paywallNote: {
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 });

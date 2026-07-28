@@ -14,7 +14,7 @@
  * =============================================================
  */
 
-import { GeneratedContent, Flashcard } from './types';
+import { GeneratedContent, Flashcard, DeepDiveSection } from './types';
 
 /** One entry in the built-in library. */
 export type LibraryConcept = {
@@ -22,10 +22,15 @@ export type LibraryConcept = {
   title: string;
   /** Which philosophical tradition it belongs to (used for grouping). */
   tradition: string;
-  /** The lesson / key ideas / practical points. */
+  /** The lesson / key ideas / practical points (FREE for everyone). */
   content: GeneratedContent;
   /** Flashcards used by quiz mode. */
   flashcards: Flashcard[];
+  /**
+   * PREMIUM "deep dive" sections (optional). Concepts with this authored
+   * show a "Go Deeper" section, locked until the user unlocks premium.
+   */
+  deepDive?: DeepDiveSection[];
 };
 
 /**
@@ -74,6 +79,28 @@ export const LIBRARY: LibraryConcept[] = [
       {
         front: 'What do Stoics consider the only true good?',
         back: 'Virtue — wisdom, courage, justice, and self-control — not wealth, success, or reputation.',
+      },
+    ],
+    deepDive: [
+      {
+        heading: 'Origins & History',
+        body: 'Stoicism was founded by Zeno of Citium around 300 BCE, who taught from the Stoa Poikile (the "painted porch") in Athens — the source of the name. Cleanthes and Chrysippus systematized its logic and physics. Centuries later it took root in Rome, where its most famous voices emerged: the freed-slave teacher Epictetus, the statesman Seneca, and the emperor Marcus Aurelius.',
+      },
+      {
+        heading: 'Key Thinkers',
+        body: 'Epictetus (c. 50–135 CE) taught the dichotomy of control; his student recorded the "Enchiridion" (handbook). Seneca (c. 4 BCE–65 CE) wrote practical letters on anger, grief, and the shortness of life. Marcus Aurelius (121–180 CE) wrote the "Meditations" as private notes to himself during military campaigns — never meant for publication.',
+      },
+      {
+        heading: 'In Their Words',
+        body: '"You have power over your mind — not outside events. Realize this, and you will find strength." — Marcus Aurelius\n\n"We suffer more often in imagination than in reality." — Seneca\n\n"It is not what happens to you, but how you react to it that matters." — Epictetus',
+      },
+      {
+        heading: 'Objections & Replies',
+        body: 'Critics charge Stoicism with cold detachment — if nothing external should move you, do you stop caring? Stoics reply that they aim not to kill emotion but to free it from false judgments; you can love deeply while accepting you do not control outcomes. Others say "focus on what you control" excuses passivity toward injustice — but Stoics counted just action itself among the things in our power, and several were active reformers.',
+      },
+      {
+        heading: 'Practicing It Deeply',
+        body: 'Try the "view from above" (picture your troubles from a cosmic distance), negative visualization (premeditatio malorum — briefly imagining loss to build gratitude and resilience), and Epictetus\'s morning preparation and evening review. Keep a "Meditations"-style journal addressed to yourself.',
       },
     ],
   },
@@ -186,6 +213,28 @@ export const LIBRARY: LibraryConcept[] = [
         back: 'Dropping ego-driven striving and over-control lets action become unforced, working with circumstances instead of against them.',
       },
     ],
+    deepDive: [
+      {
+        heading: 'Origins & History',
+        body: 'Wu Wei is a cornerstone of philosophical Taoism, expressed in the Tao Te Ching (attributed to the semi-legendary Laozi, c. 6th century BCE) and the parables of Zhuangzi (4th century BCE). It also shaped Chinese statecraft — the ideal ruler governs by not-interfering — and later flowed into Chan (Zen) Buddhism.',
+      },
+      {
+        heading: 'Key Thinkers',
+        body: 'Laozi\'s Tao Te Ching presents wu wei as alignment with the Tao, the underlying way of things. Zhuangzi illustrates it through vivid stories: Cook Ding, whose blade never dulls because he cuts along the natural gaps in the ox; and the "useless" tree that survives precisely because it is not exploited.',
+      },
+      {
+        heading: 'In Their Words',
+        body: '"The Tao does nothing, and yet nothing is left undone." — Tao Te Ching\n\n"Water is the softest of all things, yet it overcomes the hard and the strong." — Tao Te Ching\n\n"Flow with whatever may happen and let your mind be free." — Zhuangzi',
+      },
+      {
+        heading: 'Objections & Replies',
+        body: 'Doesn\'t wu wei just justify laziness or fatalism? The Taoist reply: it is skilled responsiveness, not inaction. Cook Ding is highly trained; his effortlessness is the fruit of deep attunement, not indifference. Wu wei is closer to the modern idea of "flow" than to passivity.',
+      },
+      {
+        heading: 'Practicing It Deeply',
+        body: 'Cultivate flow by matching challenge to skill and removing self-conscious control. Notice where forcing creates resistance, and experiment with yielding. Study the Cook Ding parable as a model of mastery, and practice timing — acting when conditions are ripe rather than pushing against them.',
+      },
+    ],
   },
   {
     title: 'The Four Noble Truths',
@@ -294,6 +343,28 @@ export const LIBRARY: LibraryConcept[] = [
       {
         front: 'Why does radical freedom bring responsibility?',
         back: 'Since nothing outside you dictates your values, every choice is genuinely yours to own.',
+      },
+    ],
+    deepDive: [
+      {
+        heading: 'Origins & History',
+        body: 'The 19th-century Danish thinker Søren Kierkegaard is often called the father of existentialism, with Nietzsche as a second root. It flowered in mid-20th-century France — shaped by the upheaval of two world wars — through Jean-Paul Sartre, Simone de Beauvoir, and (adjacent to the label) Albert Camus. Martin Heidegger deeply influenced it, though he rejected the term.',
+      },
+      {
+        heading: 'Key Thinkers',
+        body: 'Kierkegaard explored anxiety, despair, and the "leap of faith". Sartre gave the movement its slogans in "Being and Nothingness" (bad faith, radical freedom). Simone de Beauvoir extended it into ethics and feminism in "The Ethics of Ambiguity" and "The Second Sex". Heidegger examined authentic existence and "being-toward-death".',
+      },
+      {
+        heading: 'In Their Words',
+        body: '"Man is condemned to be free." — Sartre\n\n"One is not born, but rather becomes, a woman." — Simone de Beauvoir\n\n"Anxiety is the dizziness of freedom." — Kierkegaard',
+      },
+      {
+        heading: 'Objections & Replies',
+        body: 'Isn\'t existentialism bleak and self-absorbed? De Beauvoir answered that my freedom is bound up with everyone else\'s — to will my own freedom authentically is to will theirs, which grounds a genuine ethics. Critics also say "radical freedom" ignores real constraints of biology and society; later existentialists emphasized freedom as always "situated" within a concrete situation.',
+      },
+      {
+        heading: 'Practicing It Deeply',
+        body: 'Hunt for "bad faith" in your own life — the stories that let you deny your freedom ("that\'s just who I am", "I had no choice"). Clarify the projects that actually define you, and choose them deliberately. Sit with the anxiety of freedom rather than numbing it; treat it as the felt sign that a real choice is yours to make.',
       },
     ],
   },
@@ -442,6 +513,28 @@ export const LIBRARY: LibraryConcept[] = [
         back: 'It can seem to justify sacrificing an individual for the benefit of the majority.',
       },
     ],
+    deepDive: [
+      {
+        heading: 'Origins & History',
+        body: 'Utilitarianism was given systematic form by Jeremy Bentham (1748–1832), who proposed a "hedonic calculus" to weigh pleasures and pains and used it to argue for legal and prison reform. John Stuart Mill (1806–1873), raised on Bentham\'s ideas, refined the theory. In the 20th century Henry Sidgwick sharpened it, and Peter Singer extended it to animals and global poverty.',
+      },
+      {
+        heading: 'Key Thinkers',
+        body: 'Bentham measured pleasure by quantity alone ("the quantity of pleasure being equal, push-pin is as good as poetry"). Mill disagreed, ranking "higher" intellectual and moral pleasures above "lower" ones. Peter Singer applies the principle today through effective altruism and the idea of an expanding moral circle.',
+      },
+      {
+        heading: 'In Their Words',
+        body: '"It is the greatest happiness of the greatest number that is the measure of right and wrong." — Bentham\n\n"It is better to be a human being dissatisfied than a pig satisfied; better to be Socrates dissatisfied than a fool satisfied." — Mill',
+      },
+      {
+        heading: 'Objections & Replies',
+        body: 'The sharpest objections concern justice: could utilitarianism justify framing an innocent person to satisfy a mob? And it can seem impossibly demanding — must I give until I am nearly as badly off as those I help (Singer says close to yes)? "Rule utilitarianism" replies that following rules which generally maximize welfare (like "do not punish the innocent") yields better outcomes than judging each act in isolation.',
+      },
+      {
+        heading: 'Practicing It Deeply',
+        body: 'For real decisions, list everyone affected and weigh both how many and how deeply. Notice the difference between "act" utilitarianism (judge each act) and "rule" utilitarianism (follow welfare-maximizing rules). Explore effective altruism as a modern application: doing the most good per unit of effort or money.',
+      },
+    ],
   },
   {
     title: "Kant's Categorical Imperative",
@@ -503,4 +596,9 @@ export function findLibraryConcept(title: string): LibraryConcept | undefined {
 /** Get the flashcards for a title if it's in the library, else an empty list. */
 export function flashcardsForTitle(title: string): Flashcard[] {
   return findLibraryConcept(title)?.flashcards ?? [];
+}
+
+/** Get the premium deep-dive sections for a title, if any exist. */
+export function deepDiveForTitle(title: string): DeepDiveSection[] | undefined {
+  return findLibraryConcept(title)?.deepDive;
 }
