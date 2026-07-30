@@ -9,7 +9,7 @@
  * mark "Got it" or "Review again". At the end you get a quick summary.
  */
 
-import React, { useMemo, useState, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useRef, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../src/navigation';
 import { useConcepts } from '../src/ConceptsContext';
 import { usePremium } from '../src/premium';
+import { useProgress, cardKeyOf } from '../src/progress';
 import { colors, spacing, fontSize, radius } from '../src/theme';
 import { Flashcard } from '../src/types';
 
@@ -45,20 +46,28 @@ export default function ReviewScreen({ route, navigation }: Props) {
 
   const { getConcept, concepts } = useConcepts();
   const { isPremium, unlock } = usePremium();
+  const { dueAt } = useProgress();
 
   // Build the deck of cards for this session.
   const cards = useMemo<ReviewCard[]>(() => {
+    let base: ReviewCard[] = [];
     if (conceptId) {
       const c = getConcept(conceptId);
-      return c?.flashcards ?? [];
+      base = (c?.flashcards ?? []).map((f) => ({ ...f, source: c!.title }));
+    } else {
+      // Library quiz: gather every concept's cards, tagged and shuffled.
+      concepts.forEach((c) => {
+        (c.flashcards ?? []).forEach((f) => base.push({ ...f, source: c.title }));
+      });
+      base = shuffle(base);
     }
-    // Library quiz: gather every concept's cards, tagged and shuffled.
-    const all: ReviewCard[] = [];
-    concepts.forEach((c) => {
-      (c.flashcards ?? []).forEach((f) => all.push({ ...f, source: c.title }));
-    });
-    return shuffle(all);
-  }, [conceptId, concepts, getConcept]);
+    // Spaced repetition: put the cards that are due (or never seen) first.
+    return base.sort(
+      (a, b) =>
+        dueAt(cardKeyOf(a.source ?? '', a.front)) -
+        dueAt(cardKeyOf(b.source ?? '', b.front))
+    );
+  }, [conceptId, concepts, getConcept, dueAt]);
 
   const conceptTitle = conceptId ? getConcept(conceptId)?.title : undefined;
 
@@ -89,7 +98,7 @@ export default function ReviewScreen({ route, navigation }: Props) {
   return <Session cards={cards} onDone={() => navigation.goBack()} />;
 }
 
-/** The actual review loop over a deck of cards. */
+/** The actual review loop over a deck of cards (with spaced repetition). */
 function Session({
   cards,
   onDone,
@@ -97,29 +106,33 @@ function Session({
   cards: ReviewCard[];
   onDone: () => void;
 }) {
-  const [index, setIndex] = useState(0);
+  const { recordAnswer } = useProgress();
+  const total = useRef(cards.length);
+  const [queue, setQueue] = useState<ReviewCard[]>(cards);
   const [revealed, setRevealed] = useState(false);
-  const [gotIt, setGotIt] = useState(0);
-  const [finished, setFinished] = useState(false);
+  const [learned, setLearned] = useState(0);
 
-  const card = cards[index];
-  const progress = (index + (revealed ? 1 : 0)) / cards.length;
+  const card = queue[0];
+  const finished = queue.length === 0;
+  const progress = total.current ? learned / total.current : 0;
 
   function answer(known: boolean) {
-    if (known) setGotIt((n) => n + 1);
-    if (index + 1 >= cards.length) {
-      setFinished(true);
+    recordAnswer(cardKeyOf(card.source ?? '', card.front), known);
+    setRevealed(false);
+    if (known) {
+      setLearned((n) => n + 1);
+      setQueue((q) => q.slice(1)); // done with this card
     } else {
-      setIndex((i) => i + 1);
-      setRevealed(false);
+      // Bring it back later in the same session (spaced repetition).
+      setQueue((q) => (q.length > 1 ? [...q.slice(1), q[0]] : q));
     }
   }
 
   function restart() {
-    setIndex(0);
+    setQueue(cards);
     setRevealed(false);
-    setGotIt(0);
-    setFinished(false);
+    setLearned(0);
+    total.current = cards.length;
   }
 
   if (finished) {
@@ -128,13 +141,13 @@ function Session({
         <Text style={styles.emptyEmoji}>🎉</Text>
         <Text style={styles.summaryTitle}>Session complete</Text>
         <Text style={styles.summaryText}>
-          You reviewed {cards.length} card{cards.length === 1 ? '' : 's'}.
+          You worked through {total.current} card{total.current === 1 ? '' : 's'}.
         </Text>
         <Text style={styles.summaryScore}>
-          Got it: {gotIt} · To review: {cards.length - gotIt}
+          They'll come back for review based on how well you knew them.
         </Text>
         <TouchableOpacity style={styles.primaryBtn} onPress={restart}>
-          <Text style={styles.primaryBtnText}>Review again</Text>
+          <Text style={styles.primaryBtnText}>Go again</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryBtn} onPress={onDone}>
           <Text style={styles.secondaryBtnText}>Done</Text>
@@ -148,7 +161,7 @@ function Session({
       {/* Progress */}
       <View style={styles.progressRow}>
         <Text style={styles.progressText}>
-          {index + 1} / {cards.length}
+          {learned} / {total.current} learned
         </Text>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />

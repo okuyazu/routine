@@ -17,6 +17,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './src/navigation';
 import { ConceptsProvider } from './src/ConceptsContext';
 import { PremiumProvider } from './src/premium';
+import { ProgressProvider } from './src/progress';
 import { colors } from './src/theme';
 
 import HomeScreen from './screens/HomeScreen';
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <PremiumProvider>
+      <ProgressProvider>
       <ConceptsProvider>
         <NavigationContainer>
           <StatusBar style="dark" />
@@ -72,6 +74,7 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
       </ConceptsProvider>
+      </ProgressProvider>
       </PremiumProvider>
     </SafeAreaProvider>
   );

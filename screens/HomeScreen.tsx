@@ -20,13 +20,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../src/navigation';
 import { useConcepts } from '../src/ConceptsContext';
+import { useProgress, cardKeyOf } from '../src/progress';
 import { colors, spacing, fontSize, radius } from '../src/theme';
 import { Concept } from '../src/types';
+
+/** All spaced-repetition card keys for a concept. */
+function keysFor(concept: Concept): string[] {
+  return (concept.flashcards ?? []).map((f) => cardKeyOf(concept.title, f.front));
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const { concepts, loading } = useConcepts();
+  const { streak, masteryOf, dueCount } = useProgress();
+
+  // Overall progress across every saved concept's flashcards.
+  const allKeys = concepts.flatMap(keysFor);
+  const overall = masteryOf(allKeys);
+  const due = dueCount(allKeys);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -63,9 +75,20 @@ export default function HomeScreen({ navigation }: Props) {
           data={concepts}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            allKeys.length > 0 ? (
+              <StatsBanner
+                streak={streak}
+                mastered={overall.mastered}
+                total={overall.total}
+                due={due}
+              />
+            ) : null
+          }
           renderItem={({ item }) => (
             <ConceptCard
               concept={item}
+              mastery={masteryOf(keysFor(item))}
               onPress={() => navigation.navigate('ConceptDetail', { id: item.id })}
             />
           )}
@@ -84,12 +107,48 @@ export default function HomeScreen({ navigation }: Props) {
   );
 }
 
+/** A small progress dashboard shown above the concept list. */
+function StatsBanner({
+  streak,
+  mastered,
+  total,
+  due,
+}: {
+  streak: number;
+  mastered: number;
+  total: number;
+  due: number;
+}) {
+  return (
+    <View style={styles.stats}>
+      <View style={styles.statItem}>
+        <Text style={styles.statValue}>🔥 {streak}</Text>
+        <Text style={styles.statLabel}>day streak</Text>
+      </View>
+      <View style={styles.statDivider} />
+      <View style={styles.statItem}>
+        <Text style={styles.statValue}>
+          {mastered}/{total}
+        </Text>
+        <Text style={styles.statLabel}>mastered</Text>
+      </View>
+      <View style={styles.statDivider} />
+      <View style={styles.statItem}>
+        <Text style={styles.statValue}>{due}</Text>
+        <Text style={styles.statLabel}>due now</Text>
+      </View>
+    </View>
+  );
+}
+
 /** A single row/card in the list. */
 function ConceptCard({
   concept,
+  mastery,
   onPress,
 }: {
   concept: Concept;
+  mastery: { mastered: number; total: number };
   onPress: () => void;
 }) {
   return (
@@ -97,6 +156,11 @@ function ConceptCard({
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{concept.title}</Text>
         <Text style={styles.cardMeta}>{statusLabel(concept)}</Text>
+        {mastery.total > 0 && (
+          <Text style={styles.cardMastery}>
+            🎴 {mastery.mastered}/{mastery.total} cards mastered
+          </Text>
+        )}
       </View>
       {concept.status === 'generating' && (
         <ActivityIndicator color={colors.primary} />
@@ -176,6 +240,26 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  cardMastery: {
+    fontSize: fontSize.sm,
+    color: colors.accent,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  stats: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
+  statLabel: { fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 },
+  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
   chevron: { fontSize: 26, color: colors.textMuted, marginLeft: spacing.xs },
   center: {
     flex: 1,
