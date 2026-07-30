@@ -33,11 +33,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const { concepts, loading } = useConcepts();
-  const { streak, masteryOf, dueCount } = useProgress();
+  const { streak, learnedOf, dueCount } = useProgress();
 
   // Overall progress across every saved concept's flashcards.
   const allKeys = concepts.flatMap(keysFor);
-  const overall = masteryOf(allKeys);
+  const overall = learnedOf(allKeys);
   const due = dueCount(allKeys);
 
   return (
@@ -79,7 +79,7 @@ export default function HomeScreen({ navigation }: Props) {
             allKeys.length > 0 ? (
               <StatsBanner
                 streak={streak}
-                mastered={overall.mastered}
+                learned={overall.learned}
                 total={overall.total}
                 due={due}
               />
@@ -88,7 +88,7 @@ export default function HomeScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <ConceptCard
               concept={item}
-              mastery={masteryOf(keysFor(item))}
+              learned={learnedOf(keysFor(item))}
               onPress={() => navigation.navigate('ConceptDetail', { id: item.id })}
             />
           )}
@@ -110,12 +110,12 @@ export default function HomeScreen({ navigation }: Props) {
 /** A small progress dashboard shown above the concept list. */
 function StatsBanner({
   streak,
-  mastered,
+  learned,
   total,
   due,
 }: {
   streak: number;
-  mastered: number;
+  learned: number;
   total: number;
   due: number;
 }) {
@@ -128,9 +128,9 @@ function StatsBanner({
       <View style={styles.statDivider} />
       <View style={styles.statItem}>
         <Text style={styles.statValue}>
-          {mastered}/{total}
+          {learned}/{total}
         </Text>
-        <Text style={styles.statLabel}>mastered</Text>
+        <Text style={styles.statLabel}>learned</Text>
       </View>
       <View style={styles.statDivider} />
       <View style={styles.statItem}>
@@ -144,11 +144,11 @@ function StatsBanner({
 /** A single row/card in the list. */
 function ConceptCard({
   concept,
-  mastery,
+  learned,
   onPress,
 }: {
   concept: Concept;
-  mastery: { mastered: number; total: number };
+  learned: { learned: number; total: number };
   onPress: () => void;
 }) {
   return (
@@ -156,9 +156,9 @@ function ConceptCard({
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{concept.title}</Text>
         <Text style={styles.cardMeta}>{statusLabel(concept)}</Text>
-        {mastery.total > 0 && (
+        {learned.total > 0 && (
           <Text style={styles.cardMastery}>
-            🎴 {mastery.mastered}/{mastery.total} cards mastered
+            🎴 {learned.learned}/{learned.total} cards learned
           </Text>
         )}
       </View>

@@ -29,8 +29,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** How many days until a card in each box becomes due again. */
 const INTERVALS_DAYS = [0, 1, 3, 7, 14, 30];
-/** A card in this box or higher counts as "mastered". */
-const MASTERED_BOX = 3;
+/**
+ * A card in this box or higher counts as "learned" — i.e. you've answered
+ * it correctly at least once. (Box 1 = one correct answer.) The spaced-
+ * repetition schedule keeps deepening the card through the higher boxes,
+ * but "learned" gives immediate, satisfying feedback after a quiz.
+ */
+const LEARNED_BOX = 1;
 
 /** Progress for a single card. */
 type CardProgress = {
@@ -52,8 +57,8 @@ type ProgressContextValue = {
   recordAnswer: (key: string, known: boolean) => void;
   /** Timestamp a card is due (0 if never seen — i.e. treat as due now). */
   dueAt: (key: string) => number;
-  /** How many of these card keys are "mastered", and the total. */
-  masteryOf: (keys: string[]) => { mastered: number; total: number };
+  /** How many of these card keys are "learned", and the total. */
+  learnedOf: (keys: string[]) => { learned: number; total: number };
   /** How many of these cards are due for review right now. */
   dueCount: (keys: string[]) => number;
   /** Current daily streak. */
@@ -124,13 +129,13 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
     [state.cards]
   );
 
-  const masteryOf = useCallback(
+  const learnedOf = useCallback(
     (keys: string[]) => {
-      let mastered = 0;
+      let learned = 0;
       keys.forEach((k) => {
-        if ((state.cards[k]?.box ?? 0) >= MASTERED_BOX) mastered++;
+        if ((state.cards[k]?.box ?? 0) >= LEARNED_BOX) learned++;
       });
-      return { mastered, total: keys.length };
+      return { learned, total: keys.length };
     },
     [state.cards]
   );
@@ -151,7 +156,7 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
 
   return (
     <ProgressContext.Provider
-      value={{ recordAnswer, dueAt, masteryOf, dueCount, streak: state.streakCount }}
+      value={{ recordAnswer, dueAt, learnedOf, dueCount, streak: state.streakCount }}
     >
       {children}
     </ProgressContext.Provider>
