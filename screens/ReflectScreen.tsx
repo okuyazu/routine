@@ -27,8 +27,8 @@ import { colors, spacing, fontSize, radius } from '../src/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Reflect'>;
 
-/** The Socratic "move" each question represents (for a small label). */
-const MOVE_LABELS = ['Clarify', 'Apply', 'Challenge', 'Perspective', 'Consequence', 'Connect'];
+/** A gentle progression label for each step (flavor above the question). */
+const MOVE_LABELS = ['Notice', 'Examine', 'Challenge', 'Consider', 'Imagine', 'Connect'];
 
 export default function ReflectScreen({ route, navigation }: Props) {
   const { conceptId } = route.params;
