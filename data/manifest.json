@@ -1,0 +1,9 @@
+{
+  "app": "My Benchmarks",
+  "tagline": "Personal milestones & progress",
+  "projects": [
+    "hyrox.json",
+    "finance.json",
+    "printing.json"
+  ]
+}
