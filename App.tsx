@@ -18,6 +18,7 @@ import { RootStackParamList } from './src/navigation';
 import { ConceptsProvider } from './src/ConceptsContext';
 import { PremiumProvider } from './src/premium';
 import { ProgressProvider } from './src/progress';
+import { JournalProvider } from './src/journal';
 import { colors } from './src/theme';
 
 import HomeScreen from './screens/HomeScreen';
@@ -25,6 +26,7 @@ import LibraryScreen from './screens/LibraryScreen';
 import AddConceptScreen from './screens/AddConceptScreen';
 import ConceptDetailScreen from './screens/ConceptDetailScreen';
 import ReviewScreen from './screens/ReviewScreen';
+import ReflectScreen from './screens/ReflectScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -33,6 +35,7 @@ export default function App() {
     <SafeAreaProvider>
       <PremiumProvider>
       <ProgressProvider>
+      <JournalProvider>
       <ConceptsProvider>
         <NavigationContainer>
           <StatusBar style="dark" />
@@ -71,9 +74,15 @@ export default function App() {
               component={ReviewScreen}
               options={{ title: 'Review' }}
             />
+            <Stack.Screen
+              name="Reflect"
+              component={ReflectScreen}
+              options={{ title: 'Reflect' }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </ConceptsProvider>
+      </JournalProvider>
       </ProgressProvider>
       </PremiumProvider>
     </SafeAreaProvider>

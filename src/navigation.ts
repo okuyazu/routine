@@ -14,4 +14,6 @@ export type RootStackParamList = {
   // Flashcard review. With a conceptId -> review that one concept (free).
   // Without one -> mixed review across the whole library (premium).
   Review: { conceptId?: string };
+  // Socratic reflection on a single concept (free).
+  Reflect: { conceptId: string };
 };

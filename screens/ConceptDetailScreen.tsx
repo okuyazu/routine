@@ -96,6 +96,13 @@ export default function ConceptDetailScreen({ route, navigation }: Props) {
               </Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            style={styles.reflectBtn}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Reflect', { conceptId: id })}
+          >
+            <Text style={styles.reflectBtnText}>🧠 Reflect on this</Text>
+          </TouchableOpacity>
           <GoDeeper
             concept={concept}
             isPremium={isPremium}
@@ -344,6 +351,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reviewBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '700' },
+  reflectBtn: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+  },
+  reflectBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '700' },
   deleteBtn: {
     marginTop: spacing.xl,
     alignSelf: 'center',
