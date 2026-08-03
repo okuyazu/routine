@@ -91,10 +91,14 @@ Overall project % is the average of your milestone, checklist, and metric progre
 
 ## Publishing (GitHub Pages)
 
-A workflow at [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
-publishes the site on every push. **One-time setup:** in your repo, go to
-**Settings → Pages → Build and deployment → Source: GitHub Actions**. Your app
-will be live at `https://<username>.github.io/<repo>/`.
+This is a plain static site, so it's served directly from the branch — no build
+step. **One-time setup:** in your repo, go to **Settings → Pages → Build and
+deployment → Source: Deploy from a branch**, then choose **`main`** and folder
+**`/ (root)`**, and Save. Your app will be live at
+`https://<username>.github.io/<repo>/`, and every push republishes it.
+
+The committed icons and the `.nojekyll` marker (which tells Pages to serve files
+as-is) mean everything works without any workflow.
 
 ---
 
