@@ -8,7 +8,8 @@ with **Claude or ChatGPT**.
 - ✅ **Checkmarks on your phone** — tap milestones and tasks, saved instantly (works offline)
 - 🎯 **Milestones & progress** — dated timelines and progress bars per project
 - 🌐 **View anywhere** — website (GitHub Pages) or your phone, same app
-- 🤖 **LLM-friendly** — every project is a small JSON file an AI can read and edit
+- 🤖 **LLM-friendly** — every project is a Markdown note an AI can read and edit
+- 🗂️ **Obsidian vault** — the `projects/` and `inbox/` folders are plain `.md` notes you can open in [Obsidian](https://obsidian.md) on your desktop and track on your phone — same files, two views
 - 📦 **Zero dependencies** — plain HTML/CSS/JS, no build step, no backend
 
 ---
@@ -31,7 +32,7 @@ project files — so the app always works instantly and offline, with no login.
 To make progress **permanent** or **sync it across devices**, tap the **⟳ sync**
 button (top-right), copy the snapshot, and paste it to Claude or ChatGPT with:
 
-> "Update the `done` fields in my `data/*.json` files to match this snapshot."
+> "Tick the checkboxes in my `projects/*.md` files to match this snapshot."
 
 Commit the change and every device sees it.
 
@@ -39,53 +40,59 @@ Commit the change and every device sees it.
 
 ## Adding a new project (or ask an AI to)
 
-Each project is one file in [`data/`](data/). Create `data/myproject.json`:
+Each project is one Markdown note in [`projects/`](projects/) — the same file
+opens in Obsidian. Create `projects/My Project.md`:
 
-```json
-{
-  "id": "myproject",
-  "title": "My Project",
-  "emoji": "🚀",
-  "color": "#7c3aed",
-  "description": "What this is about.",
-  "targetDate": "2026-12-31",
-  "metrics": [
-    { "id": "m1", "label": "Something measurable", "unit": "km", "start": 0, "current": 12, "target": 50 }
-  ],
-  "milestones": [
-    { "id": "ms1", "title": "First milestone", "target": "2026-08-01", "done": false }
-  ],
-  "checklist": [
-    { "id": "c1", "title": "A repeating task", "cadence": "weekly", "done": false }
-  ]
-}
+```markdown
+---
+id: myproject
+title: My Project
+emoji: 🚀
+color: "#7c3aed"
+target: 2026-12-31
+---
+
+What this project is about.
+
+## Progress
+- Something measurable: 0 / 12 / 50 km
+
+## Milestones
+- [ ] First milestone 📅 2026-08-01
+
+## Checklist
+- [ ] A repeating task (weekly)
 ```
 
-Then add the filename to [`data/manifest.json`](data/manifest.json):
+Then add the file path to the `projects` list in [`data/manifest.json`](data/manifest.json):
 
 ```json
-{ "projects": ["hyrox.json", "finance.json", "printing.json", "myproject.json"] }
+{ "projects": ["projects/Hyrox Training.md", "projects/My Project.md"] }
 ```
 
 **Prompt you can paste to Claude/ChatGPT:**
 
-> "In this repo, add a new benchmark project for `<your goal>`. Create a JSON file
-> in `data/` following the schema in the README, with realistic metrics, dated
-> milestones, and a checklist, then add it to `data/manifest.json`."
+> "In this repo, add a new benchmark project for `<your goal>`. Create a Markdown
+> note in `projects/` following the format in the README, with realistic metrics,
+> dated milestones, and a checklist, then add its path to `data/manifest.json`."
 
-### Field reference
+### Format reference
 
-| Field | Where | Meaning |
-|-------|-------|---------|
-| `id` | project & items | Unique short id. Keep stable — your saved checkmarks are keyed to it. |
-| `emoji`, `color` | project | Icon and accent color (any hex). |
-| `targetDate` | project | Overall goal date (`YYYY-MM-DD`). |
-| `metrics[]` | project | Numeric progress bar: `start → current → target`. Add `"lowerIsBetter": true` when smaller is the goal (e.g. debt, run time). `unit: "$"` renders as currency. |
-| `milestones[]` | project | Dated, checkable achievements shown as a timeline. |
-| `checklist[]` | project | Checkable tasks/habits. Optional `cadence` label (daily/weekly/monthly/once). |
-| `done` | milestone/checklist | The committed state in the file. Your local taps override it until you sync. |
+| Part | Meaning |
+|------|---------|
+| **Frontmatter** (between `---`) | `id` (keep stable — checkmarks key off it), `title`, `emoji`, `color` (any hex), `target` (`YYYY-MM-DD`). Obsidian reads these as note properties. |
+| **Description** | The text right after the frontmatter, before the first `##`. |
+| `## Progress` | One line per metric: `- Label: start / current / target unit`. Smaller-is-better (debt, run time) just works — put the bigger number as `start`. `$` as the unit renders as currency. |
+| `## Milestones` | Task lines `- [ ] Title 📅 YYYY-MM-DD`. `- [x]` = done. Shown as a dated timeline. |
+| `## Checklist` | Task lines `- [ ] Title (cadence)`, cadence being daily/weekly/monthly/once. |
 
-Overall project % is the average of your milestone, checklist, and metric progress.
+Checkbox state (`- [ ]` vs `- [x]`) is the committed value; your local taps
+override it until you sync. Overall project % averages your milestone,
+checklist, and metric progress.
+
+> **Obsidian tip:** open the repository folder as a vault. The frontmatter shows
+> up as note properties, and with the community **Tasks** plugin the `📅` due
+> dates on milestones are recognised automatically.
 
 ---
 
@@ -105,17 +112,18 @@ as-is) mean everything works without any workflow.
 ## Idea Inbox → Projects
 
 A place to capture the important conclusions from long AI conversations before
-they're ready to be real projects. Ideas live in [`data/inbox.json`](data/inbox.json)
-and show up under the **💡 Idea Inbox** (top-right), separate from tracked
-projects. When an idea is ripe, **promote** it into a full project with
-milestones.
+they're ready to be real projects. Ideas are Markdown notes in
+[`inbox/`](inbox/) (frontmatter `status: idea | promoted`, a `#` title, `##
+Notes`, `## Next steps`), listed under `inbox` in the manifest, and show up under
+the **💡 Idea Inbox** (top-right), separate from tracked projects. When an idea
+is ripe, **promote** it into a full project with milestones.
 
 **Capture (the easy way):** copy anything from an AI chat — a summary, a few
 bullet points, plain prose — then in the Inbox tap **📋 Paste idea from
 clipboard**. On Android you can skip the copy step: select the text in the
 ChatGPT/Claude app and **Share → My Benchmarks**. Either way it lands in your
 Inbox instantly, saved on the phone (marked "on this phone"). Tap **Save … to
-repo** to push a batch to `data/inbox.json` so it syncs across devices.
+repo** to turn a batch into `inbox/*.md` notes so they sync across devices.
 
 Captures don't need any special format — the first line becomes the title. If
 you *do* want structured output, tap **Get a capture prompt for AI**; it returns

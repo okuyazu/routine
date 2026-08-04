@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull recent running data from Garmin Connect and update data/hyrox.json.
+"""Pull recent running data from Garmin Connect and update the Hyrox note.
 
 Runs in CI (see .github/workflows/garmin-sync.yml). Authentication is via a
 saved token (GARMIN_TOKEN secret) so it survives MFA and never needs your
@@ -10,19 +10,19 @@ for individuals, so if Garmin changes their login this may need updating.
 """
 from __future__ import annotations
 
-import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-HYROX = Path(__file__).resolve().parent.parent / "data" / "hyrox.json"
+HYROX = Path(__file__).resolve().parent.parent / "projects" / "Hyrox Training.md"
 
-# Which computed values map onto which metric ids in data/hyrox.json.
-# Edit this if you rename metrics or want different fields synced.
+# Which computed values map onto which "## Progress" metric label in the
+# Hyrox note. Progress lines look like:  - Label: start / current / target unit
 #   weeklyvol -> total training hours over the last 7 days
 #   run5k     -> best recent 5K (or 5K-equivalent pace) in minutes
-SYNCED_METRICS = {"weeklyvol", "run5k"}
+SYNCED_LABELS = {"weeklyvol": "Weekly training", "run5k": "5K run time"}
 
 
 def _parse_gmt(ts: str) -> datetime:
@@ -73,23 +73,33 @@ def compute_metrics(activities: list[dict], now: datetime) -> dict[str, float]:
 
 
 def apply_updates(path: Path, updates: dict[str, float]) -> list[str]:
-    """Write computed values onto the matching metric.current fields.
+    """Update the 'current' (middle) number of the matching ## Progress lines.
 
-    Returns a list of human-readable change descriptions (empty if nothing
-    changed). Preserves key order; leaves every other field alone.
+    A progress line is:  - Label: start / current / target unit
+    Only the current value changes; everything else in the note is preserved.
+    Returns human-readable change descriptions (empty if nothing changed).
     """
-    data = json.loads(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
     changes: list[str] = []
-    for metric in data.get("metrics", []):
-        mid = metric.get("id")
-        if mid in SYNCED_METRICS and mid in updates:
-            new = updates[mid]
-            old = metric.get("current")
-            if old != new:
-                changes.append(f"{metric.get('label', mid)}: {old} -> {new} {metric.get('unit','')}".strip())
-                metric["current"] = new
+    for key, value in updates.items():
+        label = SYNCED_LABELS.get(key)
+        if not label:
+            continue
+        new_str = f"{value:g}"
+        pattern = re.compile(
+            r"^(-\s*" + re.escape(label) + r":\s*[\d.]+\s*/\s*)([\d.]+)(\s*/\s*[\d.]+.*)$",
+            re.MULTILINE,
+        )
+
+        def repl(m: "re.Match[str]") -> str:
+            if float(m.group(2)) == float(new_str):
+                return m.group(0)
+            changes.append(f"{label}: {m.group(2)} -> {new_str}")
+            return f"{m.group(1)}{new_str}{m.group(3)}"
+
+        text = pattern.sub(repl, text)
     if changes:
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
     return changes
 
 

@@ -99,6 +99,110 @@ function deleteCapture(id) {
   updateInboxBadge();
 }
 
+/* ---------- Markdown vault parsing (Obsidian-compatible) ----------
+ * Each project / idea is a .md note: YAML-ish frontmatter between --- lines,
+ * a description, then "## Progress / ## Milestones / ## Checklist" sections.
+ * Milestones & checklist are task lines ( - [ ] / - [x] ) with 📅 due dates. */
+function slugify(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+function hashId(prefix, s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return prefix + h.toString(36);
+}
+function parseFrontmatter(text) {
+  const props = {};
+  let body = text.replace(/^﻿/, '');
+  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (m) {
+    body = body.slice(m[0].length);
+    for (const line of m[1].split(/\r?\n/)) {
+      const kv = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+      if (kv) props[kv[1]] = kv[2].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return { props, body };
+}
+function splitSections(body) {
+  const parts = body.split(/^##\s+/m);
+  const intro = parts.shift().trim();
+  const sections = {};
+  for (const p of parts) {
+    const nl = p.indexOf('\n');
+    const name = (nl === -1 ? p : p.slice(0, nl)).trim().toLowerCase();
+    sections[name] = nl === -1 ? '' : p.slice(nl + 1);
+  }
+  return { intro, sections };
+}
+function parseTasks(sectionText) {
+  const items = [];
+  for (const line of (sectionText || '').split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
+    if (!m) continue;
+    let title = m[2].trim();
+    let target = null, cadence = null;
+    const dm = title.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+    if (dm) { target = dm[1]; title = title.replace(dm[0], '').trim(); }
+    const cm = title.match(/\(([^)]+)\)\s*$/);
+    if (cm) { cadence = cm[1].trim(); title = title.slice(0, cm.index).trim(); }
+    items.push({ title, done: m[1].toLowerCase() === 'x', target, cadence });
+  }
+  return items;
+}
+function parseMetrics(sectionText) {
+  const metrics = [];
+  for (const line of (sectionText || '').split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*(.+?):\s*(-?[\d.]+)\s*\/\s*(-?[\d.]+)\s*\/\s*(-?[\d.]+)\s*(.*)$/);
+    if (!m) continue;
+    metrics.push({
+      id: hashId('mt', m[1].trim()), label: m[1].trim(),
+      start: parseFloat(m[2]), current: parseFloat(m[3]), target: parseFloat(m[4]),
+      unit: m[5].trim(),
+    });
+  }
+  return metrics;
+}
+function fileTitle(path) {
+  return path ? path.split('/').pop().replace(/\.md$/i, '') : '';
+}
+function parseProjectMd(text, path) {
+  const { props, body } = parseFrontmatter(text);
+  const { intro, sections } = splitSections(body);
+  const title = props.title || fileTitle(path) || 'Untitled';
+  return {
+    id: props.id || slugify(title),
+    title, emoji: props.emoji || '📌', color: props.color || '#7c3aed',
+    description: intro, targetDate: props.target || '',
+    metrics: parseMetrics(sections.progress),
+    milestones: parseTasks(sections.milestones).map((t) =>
+      ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
+    checklist: parseTasks(sections.checklist).map((t) =>
+      ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence, done: t.done })),
+  };
+}
+function parseIdeaMd(text, path) {
+  const { props, body } = parseFrontmatter(text);
+  const { intro, sections } = splitSections(body);
+  let title = props.title;
+  let rest = intro;
+  const hm = intro.match(/^#\s+(.+)$/m);
+  if (hm) { title = title || hm[1].trim(); rest = intro.slice(intro.indexOf(hm[0]) + hm[0].length).trim(); }
+  title = title || fileTitle(path) || 'Idea';
+  const steps = (sections['next steps'] || '').split(/\r?\n/)
+    .map((l) => l.match(/^\s*-\s*(?:\[[ xX]\]\s*)?(.+)$/)).filter(Boolean).map((m) => m[1].trim());
+  return {
+    id: props.id || slugify(title),
+    title,
+    summary: props.summary || (rest.split('\n').find((l) => l.trim()) || '').trim(),
+    notes: (sections.notes || '').trim(),
+    nextSteps: steps,
+    captured: props.captured || '',
+    source: props.source || '',
+    status: props.status || 'idea',
+  };
+}
+
 /* ---------- data loading ---------- */
 async function loadData() {
   const bust = `?t=${Date.now()}`;
@@ -107,17 +211,15 @@ async function loadData() {
     return r.json();
   });
   META = manifest;
-  const files = manifest.projects || [];
-  const results = await Promise.all(
-    files.map((f) =>
-      fetch(`data/${f}${bust}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
-    )
-  );
-  PROJECTS = results.filter(Boolean);
-  // Idea inbox is optional — absence just hides the feature.
-  const inbox = await fetch(`data/inbox.json${bust}`)
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  INBOX = (inbox && Array.isArray(inbox.ideas)) ? inbox.ideas : [];
+  const getText = (path) =>
+    fetch(encodeURI(path) + bust).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+
+  const projTexts = await Promise.all((manifest.projects || []).map(getText));
+  PROJECTS = projTexts.map((t, i) => (t ? parseProjectMd(t, manifest.projects[i]) : null)).filter(Boolean);
+
+  const ideaTexts = await Promise.all((manifest.inbox || []).map(getText));
+  INBOX = ideaTexts.map((t, i) => (t ? parseIdeaMd(t, manifest.inbox[i]) : null)).filter(Boolean);
+
   el('appTitle').textContent = manifest.app || 'My Benchmarks';
   el('appTagline').textContent = manifest.tagline || '';
 }
@@ -326,7 +428,7 @@ function saveIdeasToRepo() {
   const payload = CAPTURES.map(({ local, ...rest }) => rest);
   openSheet(
     'Save ideas to repo',
-    'Paste this to Claude/ChatGPT on your repo: “Add these ideas to data/inbox.json.” Once committed they sync to all your devices; you can then clear them from this phone.',
+    'Paste this to Claude/ChatGPT on your repo: “Create an inbox/<name>.md note for each of these ideas (frontmatter id/status/captured/source, a # title, ## Notes, ## Next steps) and add each path to data/manifest.json.” Once committed they sync to all devices; you can then clear them from this phone.',
     JSON.stringify({ add_to_inbox: payload }, null, 2));
 }
 
@@ -363,10 +465,12 @@ function renderIdea(i) {
 }
 
 function buildPromotePrompt(i) {
-  return 'Promote this idea from data/inbox.json into a real project in my Benchmarks app:\n' +
-    '- Create data/<slug>.json following the project schema (metrics with start/current/target, dated milestones, a checklist).\n' +
-    '- Add the new file to data/manifest.json.\n' +
-    '- Set this inbox idea\'s "status" to "promoted" in data/inbox.json.\n' +
+  return 'Promote this idea into a real project in my Benchmarks Obsidian vault:\n' +
+    '- Create "projects/<Project Name>.md" with frontmatter (id, title, emoji, color, target: YYYY-MM-DD), ' +
+    'a one-line description, a "## Progress" list of `- Label: start / current / target unit` lines, ' +
+    'and "## Milestones" + "## Checklist" task lists using `- [ ]` and `📅 YYYY-MM-DD` due dates.\n' +
+    '- Add the new file path to the "projects" list in data/manifest.json.\n' +
+    '- Set this idea note\'s frontmatter status to "promoted" in its inbox/*.md file.\n' +
     'Pick sensible metrics and milestones from the idea below; ask me only if something essential is missing.\n\n' +
     JSON.stringify(i, null, 2);
 }
@@ -483,14 +587,14 @@ function renderDetail(p) {
 function buildSnapshot() {
   const out = { generated: new Date().toISOString(), projects: {} };
   for (const p of PROJECTS) {
-    const entry = {};
-    for (const m of p.milestones || []) entry[m.id] = isDone(p.id, m.id, m.done);
-    for (const c of p.checklist || []) entry[c.id] = isDone(p.id, c.id, c.done);
-    out.projects[p.id] = entry;
+    const entry = { milestones: {}, checklist: {} };
+    for (const m of p.milestones || []) entry.milestones[m.title] = isDone(p.id, m.id, m.done);
+    for (const c of p.checklist || []) entry.checklist[c.title] = isDone(p.id, c.id, c.done);
+    out.projects[p.title] = entry;
   }
   const header =
     '# Benchmarks progress snapshot\n' +
-    '# Ask Claude/ChatGPT: "Update the `done` fields in my data/*.json files to match this."\n';
+    '# Ask Claude/ChatGPT: "Tick the checkboxes in my projects/*.md files to match this (- [x] = done)."\n';
   return header + JSON.stringify(out, null, 2);
 }
 // Generic bottom sheet: a title, an intro line, and a copyable text blob.

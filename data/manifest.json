@@ -2,9 +2,13 @@
   "app": "My Benchmarks",
   "tagline": "Personal milestones & progress",
   "projects": [
-    "hyrox.json",
-    "finance.json",
-    "printing.json",
-    "expenses.json"
+    "projects/Hyrox Training.md",
+    "projects/Financial Goals.md",
+    "projects/3D Printing Project.md",
+    "projects/Automate Expense Tracking.md"
+  ],
+  "inbox": [
+    "inbox/Idea Inbox that graduates into projects.md",
+    "inbox/K-Bank expense import.md"
   ]
 }
