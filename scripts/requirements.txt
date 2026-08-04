@@ -1,0 +1,4 @@
+# Unofficial, community-maintained Garmin Connect client (used by garmin_sync.py).
+# Pinned for reproducible CI. If Garmin changes their login and sync breaks,
+# bump this or check the garth project for updates.
+garth==0.8.0
