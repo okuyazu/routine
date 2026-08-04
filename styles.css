@@ -42,7 +42,12 @@ body {
 .icon-btn, .back {
   background: var(--card); border: 1px solid var(--line); color: var(--text);
   height: 40px; min-width: 40px; border-radius: 12px; font-size: 20px;
-  display: grid; place-items: center; cursor: pointer;
+  display: grid; place-items: center; cursor: pointer; position: relative;
+}
+.badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px;
+  padding: 0 4px; border-radius: 9px; background: #eab308; color: #1a1200;
+  font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--bg);
 }
 .back { font-size: 26px; line-height: 1; }
 .icon-btn:active, .back:active { transform: scale(.94); }
@@ -147,6 +152,28 @@ body {
 .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border: none; }
 .btn.ghost { background: var(--card); color: var(--text); }
 .btn:active { transform: scale(.98); }
+
+/* ---------- Idea inbox ---------- */
+.inbox-banner {
+  display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--line); border-radius: 14px; padding: 13px 15px; font-size: 14.5px; font-weight: 600;
+}
+.inbox-banner:active { transform: scale(.99); }
+.inbox-banner span { color: var(--muted); font-size: 12.5px; font-weight: 400; margin-left: auto; }
+.status-pill {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #eab308;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; flex: none;
+}
+.status-pill.promoted { color: var(--good); }
+.notes {
+  white-space: pre-wrap; margin: 0; padding: 14px; overflow-x: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  font: 13.5px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text);
+}
+.steps { margin: 4px 0 0; padding-left: 20px; }
+.steps li { margin: 7px 0; font-size: 14.5px; }
+.view > .btn { width: 100%; }
 
 .muted { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .muted.small { font-size: 11.5px; margin-top: 10px; text-align: center; min-height: 14px; }

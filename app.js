@@ -11,6 +11,7 @@ const el = (id) => document.getElementById(id);
 const view = el('view');
 
 let PROJECTS = [];   // loaded project objects
+let INBOX = [];      // captured ideas (data/inbox.json)
 let META = {};       // manifest meta
 let overlay = loadOverlay();
 
@@ -48,8 +49,18 @@ async function loadData() {
     )
   );
   PROJECTS = results.filter(Boolean);
+  // Idea inbox is optional — absence just hides the feature.
+  const inbox = await fetch(`data/inbox.json${bust}`)
+    .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  INBOX = (inbox && Array.isArray(inbox.ideas)) ? inbox.ideas : [];
   el('appTitle').textContent = manifest.app || 'My Benchmarks';
   el('appTagline').textContent = manifest.tagline || '';
+}
+
+function updateInboxBadge() {
+  const n = INBOX.filter((i) => i.status !== 'promoted').length;
+  const b = el('inboxCount');
+  if (n > 0) { b.textContent = n; b.hidden = false; } else { b.hidden = true; }
 }
 
 /* ---------- progress math ---------- */
@@ -121,15 +132,26 @@ const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 /* ---------- routing ---------- */
 function router() {
-  const id = location.hash.replace('#/', '');
+  const raw = location.hash.replace(/^#\/?/, ''); // '', 'inbox', 'idea/<id>', or a project id
   const back = el('backBtn');
-  if (id && PROJECTS.some((p) => p.id === id)) {
-    back.hidden = false;
-    renderDetail(PROJECTS.find((p) => p.id === id));
+  let backTarget = '';           // where the ‹ button goes from this view
+  let showBack = true;
+
+  if (raw === 'inbox') {
+    renderInbox();
+  } else if (raw.startsWith('idea/')) {
+    const idea = INBOX.find((i) => i.id === raw.slice(5));
+    if (idea) { renderIdea(idea); backTarget = '#/inbox'; }
+    else { renderInbox(); }
+  } else if (raw && PROJECTS.some((p) => p.id === raw)) {
+    renderDetail(PROJECTS.find((p) => p.id === raw));
   } else {
-    back.hidden = true;
     renderHome();
+    showBack = false;
   }
+
+  back.hidden = !showBack;
+  back.dataset.target = backTarget;
   window.scrollTo(0, 0);
 }
 
@@ -164,9 +186,100 @@ function renderHome() {
       </div>
     </div>`;
   }).join('');
-  view.innerHTML = `<div class="section-label">Projects</div><div class="cards">${cards}</div>`;
+  const openIdeas = INBOX.filter((i) => i.status !== 'promoted').length;
+  const banner = INBOX.length
+    ? `<div class="inbox-banner" data-go-inbox>💡 Idea Inbox
+         <span>${openIdeas} ${openIdeas === 1 ? 'idea' : 'ideas'} waiting →</span></div>`
+    : '';
+  view.innerHTML = `${banner}<div class="section-label">Projects</div><div class="cards">${cards}</div>`;
   view.querySelectorAll('[data-go]').forEach((c) =>
     c.addEventListener('click', () => { location.hash = `#/${c.dataset.go}`; }));
+  view.querySelector('[data-go-inbox]')?.addEventListener('click', () => { location.hash = '#/inbox'; });
+}
+
+/* ---------- idea inbox ---------- */
+function renderInbox() {
+  const cards = INBOX.map((i) => `
+    <div class="pcard idea" data-idea="${esc(i.id)}">
+      <span class="accent-bar" style="background:#eab308"></span>
+      <div class="pcard-head">
+        <div class="emoji">💡</div>
+        <div class="titles">
+          <h3>${esc(i.title)}</h3>
+          <p class="desc">${esc(i.summary || '')}</p>
+        </div>
+      </div>
+      <div class="pcard-foot">
+        ${i.captured ? `<span class="chip">📥 ${esc(fmtDate(i.captured))}</span>` : ''}
+        <span class="status-pill ${i.status === 'promoted' ? 'promoted' : ''}">${esc(i.status || 'idea')}</span>
+      </div>
+    </div>`).join('');
+  view.innerHTML = `
+    <div class="section-label">Idea Inbox</div>
+    <p class="muted" style="margin:0 4px 12px">Rough ideas captured from your AI chats. Promote one when it's ready to become a project.</p>
+    <div class="cards">${cards || '<div class="empty"><p class="muted">No ideas yet. Tap “Capture a new idea” to get a prompt you can paste at the end of any AI chat.</p></div>'}</div>
+    <button class="btn ghost" id="captureBtn" style="margin-top:16px">＋ Capture a new idea</button>
+  `;
+  view.querySelectorAll('[data-idea]').forEach((c) =>
+    c.addEventListener('click', () => { location.hash = `#/idea/${c.dataset.idea}`; }));
+  el('captureBtn').addEventListener('click', openCapture);
+}
+
+function renderIdea(i) {
+  const steps = (i.nextSteps || []).map((s) => `<li>${esc(s)}</li>`).join('');
+  view.innerHTML = `
+    <div class="detail-hero">
+      <div class="emoji">💡</div>
+      <div><h2>${esc(i.title)}</h2><p class="desc">${esc(i.summary || '')}</p></div>
+    </div>
+    <div class="pcard-foot" style="margin:12px 0 4px">
+      ${i.captured ? `<span class="chip">📥 Captured ${esc(fmtDate(i.captured))}</span>` : ''}
+      <span class="status-pill ${i.status === 'promoted' ? 'promoted' : ''}">${esc(i.status || 'idea')}</span>
+      ${i.source ? `<span class="chip">${esc(i.source)}</span>` : ''}
+    </div>
+    ${i.notes ? `<div class="section-label">Notes</div><pre class="notes">${esc(i.notes)}</pre>` : ''}
+    ${steps ? `<div class="section-label">Next steps</div><ul class="steps">${steps}</ul>` : ''}
+    <div class="section-label">Turn into a project</div>
+    <button class="btn primary" id="promoteBtn">Copy “promote” prompt</button>
+    <button class="btn ghost" id="copyIdeaBtn" style="margin-top:10px">Copy idea JSON</button>
+    <p class="muted small" style="text-align:left;margin-top:12px">Paste the promote prompt to Claude or ChatGPT working on this repo — it will generate a full project with metrics and milestones from this idea, and mark it promoted.</p>
+  `;
+  el('promoteBtn').addEventListener('click', () => openSheet(
+    'Promote to project',
+    'Paste this to Claude/ChatGPT working on your repo. It creates the project file with milestones and marks this idea promoted.',
+    buildPromotePrompt(i)));
+  el('copyIdeaBtn').addEventListener('click', () => openSheet(
+    'Idea JSON', 'The raw captured idea.', JSON.stringify(i, null, 2)));
+}
+
+function buildPromotePrompt(i) {
+  return 'Promote this idea from data/inbox.json into a real project in my Benchmarks app:\n' +
+    '- Create data/<slug>.json following the project schema (metrics with start/current/target, dated milestones, a checklist).\n' +
+    '- Add the new file to data/manifest.json.\n' +
+    '- Set this inbox idea\'s "status" to "promoted" in data/inbox.json.\n' +
+    'Pick sensible metrics and milestones from the idea below; ask me only if something essential is missing.\n\n' +
+    JSON.stringify(i, null, 2);
+}
+
+const CAPTURE_PROMPT =
+  'Summarize the key project/idea from our conversation as ONE JSON object for my "Benchmarks" idea inbox. ' +
+  'Output only the JSON, using exactly this shape:\n' +
+  '{\n' +
+  '  "id": "idea_<short-slug>",\n' +
+  '  "title": "...",\n' +
+  `  "captured": "${new Date().toISOString().slice(0, 10)}",\n` +
+  '  "summary": "one sentence on what this is",\n' +
+  '  "notes": "the important distilled points, as short lines separated by \\n",\n' +
+  '  "nextSteps": ["...", "..."],\n' +
+  '  "source": "where this came from",\n' +
+  '  "status": "idea"\n' +
+  '}';
+
+function openCapture() {
+  openSheet(
+    'Capture an idea',
+    'Paste this at the END of any Claude/ChatGPT conversation. It returns a JSON idea block — hand that to Claude on your repo (or add it to data/inbox.json) to file it.',
+    CAPTURE_PROMPT);
 }
 
 /* ---------- detail ---------- */
@@ -259,18 +372,29 @@ function buildSnapshot() {
     '# Ask Claude/ChatGPT: "Update the `done` fields in my data/*.json files to match this."\n';
   return header + JSON.stringify(out, null, 2);
 }
-function openSync() {
-  el('syncOut').value = buildSnapshot();
+// Generic bottom sheet: a title, an intro line, and a copyable text blob.
+function openSheet(title, intro, text) {
+  el('sheetTitle').textContent = title;
+  el('sheetIntro').textContent = intro;
+  el('syncOut').value = text;
   el('copyHint').textContent = '';
   el('sheet').hidden = false;
 }
-function closeSync() { el('sheet').hidden = true; }
+function closeSheet() { el('sheet').hidden = true; }
+
+function openSync() {
+  openSheet(
+    'Sync progress',
+    'Your checkmarks are saved on this device. To save them permanently (and share across devices), copy the snapshot below and paste it to Claude or ChatGPT, asking it to update the project files in your repo.',
+    buildSnapshot());
+}
 
 /* ---------- boot ---------- */
 async function boot() {
   view.innerHTML = `<div class="loading"><div class="spinner"></div>Loading your benchmarks…</div>`;
   try {
     await loadData();
+    updateInboxBadge();
     router();
   } catch (e) {
     view.innerHTML = `<div class="empty"><h3>Couldn't load data</h3>
@@ -283,10 +407,11 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', router);
-el('backBtn').addEventListener('click', () => { location.hash = ''; });
+el('backBtn').addEventListener('click', () => { location.hash = el('backBtn').dataset.target || ''; });
+el('inboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
 el('syncBtn').addEventListener('click', openSync);
-el('closeSheet').addEventListener('click', closeSync);
-el('sheet').addEventListener('click', (e) => { if (e.target === el('sheet')) closeSync(); });
+el('closeSheet').addEventListener('click', closeSheet);
+el('sheet').addEventListener('click', (e) => { if (e.target === el('sheet')) closeSheet(); });
 el('copyBtn').addEventListener('click', async () => {
   const text = el('syncOut').value;
   try {

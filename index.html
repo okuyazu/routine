@@ -20,6 +20,7 @@
       <h1 id="appTitle">My Benchmarks</h1>
       <p id="appTagline">Personal milestones &amp; progress</p>
     </div>
+    <button class="icon-btn" id="inboxBtn" aria-label="Idea inbox" title="Idea inbox">💡<span class="badge" id="inboxCount" hidden>0</span></button>
     <button class="icon-btn" id="syncBtn" aria-label="Sync progress" title="Sync progress">⟳</button>
   </header>
 
@@ -30,7 +31,7 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
       <div class="sheet-handle"></div>
       <h2 id="sheetTitle">Sync progress</h2>
-      <p class="muted">Your checkmarks are saved on this device. To save them permanently
+      <p class="muted" id="sheetIntro">Your checkmarks are saved on this device. To save them permanently
         (and share across devices), copy the snapshot below and paste it to Claude or ChatGPT,
         asking it to update the project files in your repo.</p>
       <textarea id="syncOut" readonly rows="8" spellcheck="false"></textarea>

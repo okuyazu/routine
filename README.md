@@ -102,6 +102,37 @@ as-is) mean everything works without any workflow.
 
 ---
 
+## Idea Inbox → Projects
+
+A place to capture the important conclusions from long AI conversations before
+they're ready to be real projects. Ideas live in [`data/inbox.json`](data/inbox.json)
+and show up under the **💡 Idea Inbox** (top-right), separate from tracked
+projects. When an idea is ripe, **promote** it into a full project with
+milestones.
+
+**Capture (at the end of any AI chat):** tap **💡 → Capture a new idea** to copy
+a prompt, paste it at the end of your Claude/ChatGPT conversation, and it returns
+a JSON idea block. Hand that block to Claude working on this repo (or add it to
+`data/inbox.json`) to file it. Each idea looks like:
+
+```json
+{
+  "id": "idea_myslug",
+  "title": "Short name",
+  "captured": "2026-08-04",
+  "summary": "One sentence on what this is.",
+  "notes": "Distilled points, short lines separated by \n",
+  "nextSteps": ["...", "..."],
+  "source": "where it came from",
+  "status": "idea"
+}
+```
+
+**Promote:** open an idea and tap **Copy "promote" prompt**, then paste it to
+Claude/ChatGPT on this repo. It creates the project file (with metrics and
+milestones), adds it to `data/manifest.json`, and flips the idea's `status` to
+`"promoted"`.
+
 ## Automatic sync from Garmin (optional)
 
 A scheduled GitHub Action ([`.github/workflows/garmin-sync.yml`](.github/workflows/garmin-sync.yml))

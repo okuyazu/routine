@@ -1,0 +1,31 @@
+{
+  "ideas": [
+    {
+      "id": "idea_inbox",
+      "title": "Idea Inbox that graduates into projects",
+      "captured": "2026-08-04",
+      "summary": "Capture the important conclusions from long AI chats, accumulate them as rough ideas, then promote ripe ones into full projects with milestones.",
+      "notes": "- End-of-chat capture emits a structured idea appended to data/inbox.json\n- The app shows an Inbox of rough ideas, kept separate from tracked projects\n- 'Promote' turns an idea into a real data/<project>.json with metrics + milestones\n- Reuses the file-based, LLM-native flow the app already runs on",
+      "nextSteps": [
+        "Build Inbox UI + data model",
+        "Add a reusable capture prompt for any AI chat",
+        "Wire the promote-to-project flow"
+      ],
+      "source": "Claude Code conversation, 2026-08-04",
+      "status": "idea"
+    },
+    {
+      "id": "idea_expense_import",
+      "title": "K-Bank expense import for the finance project",
+      "captured": "2026-08-04",
+      "summary": "Import K-Bank statement CSVs to update financial metrics, since Thai banks have no personal transaction API.",
+      "notes": "- No official API for individuals; download the statement, then parse it\n- Assisted import: paste the CSV, AI updates data/finance.json metrics\n- Avoid automated bank login/scraping (against terms, and fragile)",
+      "nextSteps": [
+        "Decide the CSV format exported from K PLUS",
+        "Build a parse -> finance.json import helper"
+      ],
+      "source": "Claude Code conversation, 2026-08-04",
+      "status": "idea"
+    }
+  ]
+}
