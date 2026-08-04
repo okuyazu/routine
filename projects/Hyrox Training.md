@@ -25,3 +25,10 @@ Build toward a competitive Hyrox race: running endurance + 8 functional stations
 - [ ] 2 strength sessions (weekly)
 - [ ] 1 full Hyrox simulation (weekly)
 - [ ] Mobility / stretch daily (daily)
+
+## History
+| date | 5K run time | Sled push (heavy) | Wall balls unbroken | Weekly training |
+|------|-------------|-------------------|---------------------|-----------------|
+| 2026-06-01 | 28 | 25 | 15 | 2 |
+| 2026-07-01 | 26 | 32 | 30 | 4 |
+| 2026-08-01 | 25 | 40 | 45 | 5 |

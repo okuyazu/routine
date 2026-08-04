@@ -25,3 +25,9 @@ Design and print a custom mechanical keyboard case, end to end.
 - [ ] Print switch plate (once)
 - [ ] Sand & finish parts (once)
 - [ ] Final assembly (once)
+
+## History
+| date | Parts printed | Filament budget |
+|------|---------------|-----------------|
+| 2026-07-20 | 0 | 0 |
+| 2026-08-01 | 3 | 35 |

@@ -166,21 +166,75 @@ function parseMetrics(sectionText) {
 function fileTitle(path) {
   return path ? path.split('/').pop().replace(/\.md$/i, '') : '';
 }
+// Parse a "## History" Markdown table into { headers, rows:[{date, values:{label:num}}] }.
+function parseHistoryTable(sectionText) {
+  const lines = (sectionText || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const cells = (l) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const headers = cells(lines[0]);
+  const rows = [];
+  for (const l of lines.slice(1)) {
+    if (/^[\s|:\-]+$/.test(l)) continue; // separator row (---)
+    const c = cells(l);
+    const values = {};
+    for (let i = 1; i < headers.length; i++) {
+      const n = parseFloat(c[i]);
+      if (c[i] !== undefined && c[i] !== '' && !isNaN(n)) values[headers[i]] = n;
+    }
+    rows.push({ date: c[0], values });
+  }
+  return { headers, rows };
+}
 function parseProjectMd(text, path) {
   const { props, body } = parseFrontmatter(text);
   const { intro, sections } = splitSections(body);
   const title = props.title || fileTitle(path) || 'Untitled';
+  const hist = parseHistoryTable(sections.history);
+  const metrics = parseMetrics(sections.progress).map((m) => {
+    const pts = hist.rows.filter((r) => m.label in r.values).map((r) => ({ date: r.date, value: r.values[m.label] }));
+    // reflect the live "current" as the latest point if the table doesn't already
+    if (pts.length && pts[pts.length - 1].value !== m.current) pts.push({ date: 'now', value: m.current });
+    m.history = pts;
+    return m;
+  });
   return {
     id: props.id || slugify(title),
     title, emoji: props.emoji || '📌', color: props.color || '#7c3aed',
     description: intro, targetDate: props.target || '',
-    metrics: parseMetrics(sections.progress),
+    metrics,
     milestones: parseTasks(sections.milestones).map((t) =>
       ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
     checklist: parseTasks(sections.checklist).map((t) =>
       ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence, done: t.done })),
   };
 }
+
+// Sparkline of a metric's history. Thin line, emphasized endpoint, no axes.
+function sparkline(points, color) {
+  if (!points || points.length < 2) return '';
+  const w = 120, h = 30, pad = 3;
+  const vals = points.map((p) => p.value);
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const pts = points.map((p, i) => [
+    pad + i * ((w - pad * 2) / (points.length - 1)),
+    pad + (h - pad * 2) * (1 - (p.value - min) / span),
+  ]);
+  const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const [lx, ly] = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="${color}"/></svg>`;
+}
+// Direction of the latest change relative to the target: 'up' (improving),
+// 'down' (slipping), 'flat', or null when there isn't enough history.
+function metricMomentum(m) {
+  const p = m.history || [];
+  if (p.length < 2) return null;
+  const dl = Math.abs(p[p.length - 1].value - m.target);
+  const dp = Math.abs(p[p.length - 2].value - m.target);
+  return dl < dp ? 'up' : dl > dp ? 'down' : 'flat';
+}
+const MOM = { up: '▲', down: '▼', flat: '–' };
 function parseIdeaMd(text, path) {
   const { props, body } = parseFrontmatter(text);
   const { intro, sections } = splitSections(body);
@@ -347,7 +401,12 @@ function computeDashboard() {
   overdue.sort((a, b) => a.d - b.d);
   upcoming.sort((a, b) => a.d - b.d);
   const overall = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0;
-  return { overall, msDone, msTot, chDone, chTot, overdue, upcoming };
+  let improving = 0, slipping = 0;
+  for (const p of PROJECTS) for (const m of p.metrics || []) {
+    const mm = metricMomentum(m);
+    if (mm === 'up') improving++; else if (mm === 'down') slipping++;
+  }
+  return { overall, msDone, msTot, chDone, chTot, overdue, upcoming, improving, slipping };
 }
 
 function dashItem(p, m, kind) {
@@ -391,6 +450,11 @@ function buildDashboard() {
       ${stat(`${d.chDone}<span class="of">/${d.chTot}</span>`, 'Tasks')}
       ${stat(`${d.overdue.length}`, 'Overdue', d.overdue.length ? 'warn' : '')}
     </div>
+    ${(d.improving || d.slipping) ? `<div class="mom-row">
+      <span class="mom up">▲ ${d.improving} improving</span>
+      <span class="mom down">▼ ${d.slipping} slipping</span>
+      <span class="mom-note">vs last recorded</span>
+    </div>` : ''}
     ${overdueBlock}
     ${upcomingBlock}`;
 }
@@ -585,12 +649,19 @@ function renderDetail(p) {
   const color = p.color || '#7c3aed';
   const metrics = (p.metrics || []).map((m) => {
     const pct = metricPct(m);
+    const mom = metricMomentum(m);
+    const spark = (m.history && m.history.length > 1)
+      ? `<div class="spark-row">${sparkline(m.history, color)}
+           ${mom ? `<span class="mom ${mom}">${MOM[mom]} ${mom === 'up' ? 'improving' : mom === 'down' ? 'slipping' : 'flat'}</span>` : ''}
+         </div>`
+      : '';
     return `<div class="metric">
       <div class="metric-top">
         <span class="name">${esc(m.label)}</span>
         <span class="nums"><b>${esc(fmtValue(m, 'current'))}</b> / ${esc(fmtValue(m, 'target'))}</span>
       </div>
       <div class="bar"><span style="width:${(pct * 100).toFixed(0)}%;background:${esc(color)}"></span></div>
+      ${spark}
     </div>`;
   }).join('');
 

@@ -103,6 +103,64 @@ def apply_updates(path: Path, updates: dict[str, float]) -> list[str]:
     return changes
 
 
+def _fmt(v: float) -> str:
+    return f"{v:g}"
+
+
+def append_history(path: Path, label_values: dict[str, float]) -> bool:
+    """Record today's values as a row in the note's '## History' table.
+
+    Updates today's row if it already exists; otherwise appends a new row —
+    but skips it when nothing changed since the last recorded row. Returns
+    True if the file was modified.
+    """
+    if not label_values:
+        return False
+    lines = path.read_text(encoding="utf-8").split("\n")
+    h = next((i for i, l in enumerate(lines) if l.strip().lower() == "## history"), None)
+    if h is None:
+        return False
+    tbl = []
+    for i in range(h + 1, len(lines)):
+        s = lines[i].strip()
+        if s.startswith("|"):
+            tbl.append(i)
+        elif s.startswith("## ") or (s == "" and tbl):
+            break
+    if len(tbl) < 2:
+        return False
+
+    def cells(line: str) -> list[str]:
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    headers = cells(lines[tbl[0]])
+    today = datetime.now(timezone.utc).date().isoformat()
+    data_idx = [i for i in tbl[1:] if not re.match(r"^[\s|:\-]+$", lines[i].strip())]
+
+    for i in data_idx:                       # update an existing row for today
+        c = cells(lines[i])
+        if c and c[0] == today:
+            while len(c) < len(headers):
+                c.append("")
+            for j, hd in enumerate(headers):
+                if j and hd in label_values:
+                    c[j] = _fmt(label_values[hd])
+            lines[i] = "| " + " | ".join(c) + " |"
+            path.write_text("\n".join(lines), encoding="utf-8")
+            return True
+
+    if data_idx:                             # skip if unchanged vs the last row
+        last = cells(lines[data_idx[-1]])
+        if all(hd not in label_values or (j < len(last) and last[j] == _fmt(label_values[hd]))
+               for j, hd in enumerate(headers) if j):
+            return False
+
+    row = [today] + [_fmt(label_values[hd]) if hd in label_values else "" for hd in headers[1:]]
+    lines.insert((data_idx[-1] if data_idx else tbl[-1]) + 1, "| " + " | ".join(row) + " |")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return True
+
+
 def fetch_activities(limit: int = 40) -> list[dict]:
     """Authenticate to Garmin and return the most recent activities."""
     import garth
@@ -133,12 +191,16 @@ def main() -> None:
         print("Nothing to sync (no usable activities found).")
         return
     changes = apply_updates(HYROX, updates)
+    label_values = {SYNCED_LABELS[k]: v for k, v in updates.items() if k in SYNCED_LABELS}
+    logged = append_history(HYROX, label_values)
     if changes:
         print("Updated Hyrox metrics from Garmin:")
         for c in changes:
             print(f"  - {c}")
     else:
-        print("Garmin data already matches; no change.")
+        print("Garmin data already matches; no metric change.")
+    if logged:
+        print("Recorded a history point for today.")
 
 
 if __name__ == "__main__":

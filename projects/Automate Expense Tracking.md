@@ -23,3 +23,8 @@ Get K-Bank spending into my Benchmarks finance view without manual entry.
 - [ ] Confirm columns (date / description / amount) (once)
 - [ ] Run the first import (once)
 - [ ] Categorize recurring vs one-off spend (monthly)
+
+## History
+| date | Months auto-tracked | Manual entry time |
+|------|---------------------|-------------------|
+| 2026-08-04 | 0 | 60 |
