@@ -322,6 +322,79 @@ function router() {
   window.scrollTo(0, 0);
 }
 
+/* ---------- overview dashboard ---------- */
+function computeDashboard() {
+  const today = new Date(new Date().toDateString());
+  const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+  let msDone = 0, msTot = 0, chDone = 0, chTot = 0;
+  const overdue = [], upcoming = [], pcts = [];
+  for (const p of PROJECTS) {
+    pcts.push(projectProgress(p));
+    for (const m of p.milestones || []) {
+      msTot++;
+      const done = isDone(p.id, m.id, m.done);
+      if (done) { msDone++; continue; }
+      if (m.target) {
+        const d = new Date(m.target + 'T00:00:00');
+        if (!isNaN(d)) {
+          if (d < today) overdue.push({ p, m, d });
+          else if (d <= in30) upcoming.push({ p, m, d });
+        }
+      }
+    }
+    for (const c of p.checklist || []) { chTot++; if (isDone(p.id, c.id, c.done)) chDone++; }
+  }
+  overdue.sort((a, b) => a.d - b.d);
+  upcoming.sort((a, b) => a.d - b.d);
+  const overall = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0;
+  return { overall, msDone, msTot, chDone, chTot, overdue, upcoming };
+}
+
+function dashItem(p, m, kind) {
+  return `<div class="dash-item" data-go="${esc(p.id)}">
+    <span class="di-emoji">${esc(p.emoji || '📌')}</span>
+    <span class="di-main">
+      <span class="di-title">${esc(m.title)}</span>
+      <span class="di-sub">${esc(p.title)}</span>
+    </span>
+    <span class="di-date ${kind}">${esc(fmtDate(m.target))}</span>
+  </div>`;
+}
+
+function buildDashboard() {
+  if (!PROJECTS.length) return '';
+  const d = computeDashboard();
+  const stat = (n, l, cls = '') => `<div class="stat ${cls}"><span class="n">${n}</span><span class="l">${l}</span></div>`;
+  const overdueBlock = d.overdue.length
+    ? `<div class="dash-block">
+         <div class="block-head warn">⚠︎ Needs attention · ${d.overdue.length} overdue</div>
+         ${d.overdue.slice(0, 4).map(({ p, m }) => dashItem(p, m, 'overdue')).join('')}
+       </div>`
+    : `<div class="dash-block"><div class="block-head good">✓ Nothing overdue — you're on track</div></div>`;
+  const upcomingBlock = d.upcoming.length
+    ? `<div class="dash-block">
+         <div class="block-head">🎯 Coming up · next 30 days</div>
+         ${d.upcoming.slice(0, 4).map(({ p, m }) => dashItem(p, m, 'soon')).join('')}
+       </div>`
+    : '';
+  return `
+    <div class="section-label">Overview</div>
+    <div class="dash-hero">
+      ${ring(d.overall, 92, 9, '#7c3aed')}
+      <div class="hero-meta">
+        <div class="hero-big">${Math.round(d.overall * 100)}%</div>
+        <div class="hero-sub">overall progress across ${PROJECTS.length} project${PROJECTS.length === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+    <div class="stat-row">
+      ${stat(`${d.msDone}<span class="of">/${d.msTot}</span>`, 'Milestones')}
+      ${stat(`${d.chDone}<span class="of">/${d.chTot}</span>`, 'Tasks')}
+      ${stat(`${d.overdue.length}`, 'Overdue', d.overdue.length ? 'warn' : '')}
+    </div>
+    ${overdueBlock}
+    ${upcomingBlock}`;
+}
+
 /* ---------- home ---------- */
 function renderHome() {
   if (!PROJECTS.length) {
@@ -330,7 +403,7 @@ function renderHome() {
       <code>manifest.json</code>. Ask Claude or ChatGPT to do it for you.</p></div>`;
     return;
   }
-  const cards = PROJECTS.map((p) => {
+  const cards = [...PROJECTS].sort((a, b) => projectProgress(b) - projectProgress(a)).map((p) => {
     const pct = projectProgress(p);
     const msDone = (p.milestones || []).filter((m) => isDone(p.id, m.id, m.done)).length;
     const msTot = (p.milestones || []).length;
@@ -358,7 +431,7 @@ function renderHome() {
     ? `<div class="inbox-banner" data-go-inbox>💡 Idea Inbox
          <span>${openIdeas} ${openIdeas === 1 ? 'idea' : 'ideas'} waiting →</span></div>`
     : '';
-  view.innerHTML = `${banner}<div class="section-label">Projects</div><div class="cards">${cards}</div>`;
+  view.innerHTML = `${banner}${buildDashboard()}<div class="section-label">Projects</div><div class="cards">${cards}</div>`;
   view.querySelectorAll('[data-go]').forEach((c) =>
     c.addEventListener('click', () => { location.hash = `#/${c.dataset.go}`; }));
   view.querySelector('[data-go-inbox]')?.addEventListener('click', () => { location.hash = '#/inbox'; });
