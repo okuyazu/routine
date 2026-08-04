@@ -102,6 +102,33 @@ as-is) mean everything works without any workflow.
 
 ---
 
+## Automatic sync from Garmin (optional)
+
+A scheduled GitHub Action ([`.github/workflows/garmin-sync.yml`](.github/workflows/garmin-sync.yml))
+pulls your recent Garmin Connect runs each morning and updates the Hyrox
+project's **weekly training volume** and **best-5K** metrics, then commits so
+the live app reflects real data.
+
+**One-time setup:**
+
+1. On your own computer, mint a login token (handles MFA, keeps your password
+   off GitHub):
+   ```bash
+   pip install garth
+   python scripts/garmin_login.py
+   ```
+2. Copy the printed token into a repository secret named **`GARMIN_TOKEN`**
+   (Settings → Secrets and variables → Actions → New repository secret).
+3. Trigger it once to test: **Actions → Garmin sync → Run workflow**.
+
+It then runs daily (edit the `cron` to change the time — it's in UTC). Which
+Garmin numbers map to which metrics is controlled by `SYNCED_METRICS` in
+[`scripts/garmin_sync.py`](scripts/garmin_sync.py).
+
+> Garmin has no official API for individuals, so this uses the unofficial,
+> community-maintained `garth` client. If Garmin changes their login it may
+> need updating. Your credentials live only in the token secret, never in the code.
+
 ## Run locally
 
 It's a static site — serve the folder with any web server:
