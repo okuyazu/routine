@@ -34,6 +34,71 @@ function setDone(projId, itemId, val) {
   saveOverlay();
 }
 
+/* ---------- locally captured ideas (this device, not yet in the repo) ---------- */
+const CAPTURE_KEY = 'benchmarks:captures:v1';
+let CAPTURES = loadCaptures();
+function loadCaptures() {
+  try { return JSON.parse(localStorage.getItem(CAPTURE_KEY)) || []; }
+  catch { return []; }
+}
+function saveCaptures() { localStorage.setItem(CAPTURE_KEY, JSON.stringify(CAPTURES)); }
+
+// File-backed ideas plus locally captured ones, newest local first.
+function allIdeas() { return [...CAPTURES, ...INBOX]; }
+function findIdea(id) { return allIdeas().find((i) => i.id === id); }
+
+// Turn arbitrary pasted/shared text into an idea. Accepts our JSON shape or
+// plain prose (first line = title, the rest = notes).
+function captureText(raw, source) {
+  const text = (raw || '').trim();
+  if (!text) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  if (text.startsWith('{')) {
+    try {
+      const o = JSON.parse(text);
+      if (o && o.title) {
+        return {
+          id: o.id || `local_${Date.now().toString(36)}`,
+          title: o.title,
+          captured: o.captured || today,
+          summary: o.summary || '',
+          notes: o.notes || '',
+          nextSteps: Array.isArray(o.nextSteps) ? o.nextSteps : [],
+          source: o.source || source,
+          status: o.status || 'idea',
+          local: true,
+        };
+      }
+    } catch { /* fall through to prose */ }
+  }
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const title = (lines[0] || 'Untitled idea').slice(0, 90);
+  return {
+    id: `local_${Date.now().toString(36)}`,
+    title,
+    captured: today,
+    summary: lines[0] ? lines[0].slice(0, 140) : '',
+    notes: lines.slice(1).join('\n'),
+    nextSteps: [],
+    source: source || 'Captured',
+    status: 'idea',
+    local: true,
+  };
+}
+function addCapture(raw, source) {
+  const idea = captureText(raw, source);
+  if (!idea) return null;
+  CAPTURES.unshift(idea);
+  saveCaptures();
+  updateInboxBadge();
+  return idea;
+}
+function deleteCapture(id) {
+  CAPTURES = CAPTURES.filter((i) => i.id !== id);
+  saveCaptures();
+  updateInboxBadge();
+}
+
 /* ---------- data loading ---------- */
 async function loadData() {
   const bust = `?t=${Date.now()}`;
@@ -58,7 +123,7 @@ async function loadData() {
 }
 
 function updateInboxBadge() {
-  const n = INBOX.filter((i) => i.status !== 'promoted').length;
+  const n = allIdeas().filter((i) => i.status !== 'promoted').length;
   const b = el('inboxCount');
   if (n > 0) { b.textContent = n; b.hidden = false; } else { b.hidden = true; }
 }
@@ -140,7 +205,7 @@ function router() {
   if (raw === 'inbox') {
     renderInbox();
   } else if (raw.startsWith('idea/')) {
-    const idea = INBOX.find((i) => i.id === raw.slice(5));
+    const idea = findIdea(raw.slice(5));
     if (idea) { renderIdea(idea); backTarget = '#/inbox'; }
     else { renderInbox(); }
   } else if (raw && PROJECTS.some((p) => p.id === raw)) {
@@ -186,8 +251,8 @@ function renderHome() {
       </div>
     </div>`;
   }).join('');
-  const openIdeas = INBOX.filter((i) => i.status !== 'promoted').length;
-  const banner = INBOX.length
+  const openIdeas = allIdeas().filter((i) => i.status !== 'promoted').length;
+  const banner = allIdeas().length
     ? `<div class="inbox-banner" data-go-inbox>💡 Idea Inbox
          <span>${openIdeas} ${openIdeas === 1 ? 'idea' : 'ideas'} waiting →</span></div>`
     : '';
@@ -199,7 +264,8 @@ function renderHome() {
 
 /* ---------- idea inbox ---------- */
 function renderInbox() {
-  const cards = INBOX.map((i) => `
+  const ideas = allIdeas();
+  const cards = ideas.map((i) => `
     <div class="pcard idea" data-idea="${esc(i.id)}">
       <span class="accent-bar" style="background:#eab308"></span>
       <div class="pcard-head">
@@ -212,17 +278,56 @@ function renderInbox() {
       <div class="pcard-foot">
         ${i.captured ? `<span class="chip">📥 ${esc(fmtDate(i.captured))}</span>` : ''}
         <span class="status-pill ${i.status === 'promoted' ? 'promoted' : ''}">${esc(i.status || 'idea')}</span>
+        ${i.local ? '<span class="status-pill local">on this phone</span>' : ''}
       </div>
     </div>`).join('');
+  const localCount = CAPTURES.length;
+  const saveRow = localCount
+    ? `<button class="btn ghost" id="saveIdeasBtn" style="margin-top:10px">⬆︎ Save ${localCount} phone idea${localCount === 1 ? '' : 's'} to repo</button>`
+    : '';
   view.innerHTML = `
     <div class="section-label">Idea Inbox</div>
-    <p class="muted" style="margin:0 4px 12px">Rough ideas captured from your AI chats. Promote one when it's ready to become a project.</p>
-    <div class="cards">${cards || '<div class="empty"><p class="muted">No ideas yet. Tap “Capture a new idea” to get a prompt you can paste at the end of any AI chat.</p></div>'}</div>
-    <button class="btn ghost" id="captureBtn" style="margin-top:16px">＋ Capture a new idea</button>
+    <p class="muted" style="margin:0 4px 12px">Capture rough ideas from any AI chat. Copy the text, then tap Paste — or on Android, Share it straight to this app. Promote one when it's ready to become a project.</p>
+    <div class="cards">${cards || '<div class="empty"><p class="muted">No ideas yet. Copy something from an AI chat and tap “Paste idea”.</p></div>'}</div>
+    <button class="btn primary" id="pasteBtn" style="margin-top:16px">📋 Paste idea from clipboard</button>
+    <button class="btn ghost" id="typeBtn" style="margin-top:10px">✎ Type or paste manually</button>
+    ${saveRow}
+    <button class="btn ghost" id="captureBtn" style="margin-top:10px">Get a capture prompt for AI</button>
   `;
   view.querySelectorAll('[data-idea]').forEach((c) =>
     c.addEventListener('click', () => { location.hash = `#/idea/${c.dataset.idea}`; }));
+  el('pasteBtn').addEventListener('click', pasteIdea);
+  el('typeBtn').addEventListener('click', openCaptureInput);
   el('captureBtn').addEventListener('click', openCapture);
+  el('saveIdeasBtn')?.addEventListener('click', saveIdeasToRepo);
+}
+
+// One-tap capture: read the clipboard and file it. Falls back to the manual
+// sheet if the browser blocks clipboard reads (e.g. no permission).
+async function pasteIdea() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text || !text.trim()) { openCaptureInput('Clipboard was empty — paste your idea here.'); return; }
+    const idea = addCapture(text, 'Pasted from clipboard');
+    if (idea) location.hash = `#/idea/${idea.id}`;
+  } catch {
+    openCaptureInput('Paste your idea here (clipboard access was blocked).');
+  }
+}
+
+function openCaptureInput(hint) {
+  el('captureIn').value = '';
+  el('captureHint').textContent = hint || '';
+  el('captureSheet').hidden = false;
+  el('captureIn').focus();
+}
+
+function saveIdeasToRepo() {
+  const payload = CAPTURES.map(({ local, ...rest }) => rest);
+  openSheet(
+    'Save ideas to repo',
+    'Paste this to Claude/ChatGPT on your repo: “Add these ideas to data/inbox.json.” Once committed they sync to all your devices; you can then clear them from this phone.',
+    JSON.stringify({ add_to_inbox: payload }, null, 2));
 }
 
 function renderIdea(i) {
@@ -242,6 +347,7 @@ function renderIdea(i) {
     <div class="section-label">Turn into a project</div>
     <button class="btn primary" id="promoteBtn">Copy “promote” prompt</button>
     <button class="btn ghost" id="copyIdeaBtn" style="margin-top:10px">Copy idea JSON</button>
+    ${i.local ? '<button class="btn ghost danger" id="deleteIdeaBtn" style="margin-top:10px">Delete from this phone</button>' : ''}
     <p class="muted small" style="text-align:left;margin-top:12px">Paste the promote prompt to Claude or ChatGPT working on this repo — it will generate a full project with metrics and milestones from this idea, and mark it promoted.</p>
   `;
   el('promoteBtn').addEventListener('click', () => openSheet(
@@ -250,6 +356,10 @@ function renderIdea(i) {
     buildPromotePrompt(i)));
   el('copyIdeaBtn').addEventListener('click', () => openSheet(
     'Idea JSON', 'The raw captured idea.', JSON.stringify(i, null, 2)));
+  el('deleteIdeaBtn')?.addEventListener('click', () => {
+    deleteCapture(i.id);
+    location.hash = '#/inbox';
+  });
 }
 
 function buildPromotePrompt(i) {
@@ -280,6 +390,17 @@ function openCapture() {
     'Capture an idea',
     'Paste this at the END of any Claude/ChatGPT conversation. It returns a JSON idea block — hand that to Claude on your repo (or add it to data/inbox.json) to file it.',
     CAPTURE_PROMPT);
+}
+
+// When text is shared into the app (Android "Share → My Benchmarks"), it
+// arrives as ?title=&text=&url= on the start URL. Capture it, then clean up.
+function handleShareTarget() {
+  const p = new URLSearchParams(location.search);
+  const shared = [p.get('title'), p.get('text'), p.get('url')].filter(Boolean).join('\n');
+  if (!shared.trim()) return;
+  addCapture(shared, 'Shared to app');
+  const idea = CAPTURES[0];
+  history.replaceState(null, '', location.pathname + (idea ? `#/idea/${idea.id}` : '#/inbox'));
 }
 
 /* ---------- detail ---------- */
@@ -394,6 +515,7 @@ async function boot() {
   view.innerHTML = `<div class="loading"><div class="spinner"></div>Loading your benchmarks…</div>`;
   try {
     await loadData();
+    handleShareTarget();
     updateInboxBadge();
     router();
   } catch (e) {
@@ -421,6 +543,17 @@ el('copyBtn').addEventListener('click', async () => {
     const ta = el('syncOut'); ta.focus(); ta.select();
     el('copyHint').textContent = 'Select all and copy manually.';
   }
+});
+
+// Capture-input sheet
+function closeCaptureSheet() { el('captureSheet').hidden = true; }
+el('captureClose').addEventListener('click', closeCaptureSheet);
+el('captureSheet').addEventListener('click', (e) => { if (e.target === el('captureSheet')) closeCaptureSheet(); });
+el('captureSave').addEventListener('click', () => {
+  const idea = addCapture(el('captureIn').value, 'Captured on phone');
+  if (!idea) { el('captureHint').textContent = 'Nothing to save yet — paste some text first.'; return; }
+  closeCaptureSheet();
+  location.hash = `#/idea/${idea.id}`;
 });
 
 boot();

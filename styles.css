@@ -166,6 +166,9 @@ body {
   border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; flex: none;
 }
 .status-pill.promoted { color: var(--good); }
+.status-pill.local { color: #a78bfa; }
+.btn.danger { color: #fca5a5; }
+#captureIn { font: 14.5px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 .notes {
   white-space: pre-wrap; margin: 0; padding: 14px; overflow-x: auto;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;

@@ -110,10 +110,16 @@ and show up under the **💡 Idea Inbox** (top-right), separate from tracked
 projects. When an idea is ripe, **promote** it into a full project with
 milestones.
 
-**Capture (at the end of any AI chat):** tap **💡 → Capture a new idea** to copy
-a prompt, paste it at the end of your Claude/ChatGPT conversation, and it returns
-a JSON idea block. Hand that block to Claude working on this repo (or add it to
-`data/inbox.json`) to file it. Each idea looks like:
+**Capture (the easy way):** copy anything from an AI chat — a summary, a few
+bullet points, plain prose — then in the Inbox tap **📋 Paste idea from
+clipboard**. On Android you can skip the copy step: select the text in the
+ChatGPT/Claude app and **Share → My Benchmarks**. Either way it lands in your
+Inbox instantly, saved on the phone (marked "on this phone"). Tap **Save … to
+repo** to push a batch to `data/inbox.json` so it syncs across devices.
+
+Captures don't need any special format — the first line becomes the title. If
+you *do* want structured output, tap **Get a capture prompt for AI**; it returns
+a JSON idea block like this:
 
 ```json
 {

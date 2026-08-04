@@ -43,6 +43,22 @@
     </div>
   </div>
 
+  <!-- Capture-input sheet (editable) -->
+  <div class="sheet-backdrop" id="captureSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="captureTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="captureTitle">Capture an idea</h2>
+      <p class="muted">Paste anything from an AI chat — the summary, a few bullet points,
+        or a full idea. The first line becomes the title.</p>
+      <textarea id="captureIn" rows="7" spellcheck="false" placeholder="Paste your idea here…"></textarea>
+      <div class="sheet-actions">
+        <button class="btn primary" id="captureSave">Save to inbox</button>
+        <button class="btn ghost" id="captureClose">Cancel</button>
+      </div>
+      <p class="muted small" id="captureHint"></p>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
