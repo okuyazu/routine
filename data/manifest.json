@@ -4,6 +4,7 @@
   "projects": [
     "hyrox.json",
     "finance.json",
-    "printing.json"
+    "printing.json",
+    "expenses.json"
   ]
 }

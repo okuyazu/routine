@@ -1,0 +1,24 @@
+{
+  "id": "expenses",
+  "title": "Automate Expense Tracking",
+  "emoji": "🧾",
+  "color": "#14b8a6",
+  "description": "Get K-Bank spending into my Benchmarks finance view without manual entry.",
+  "targetDate": "2026-10-31",
+  "metrics": [
+    { "id": "months_tracked", "label": "Months auto-tracked", "unit": "of 3", "start": 0, "current": 0, "target": 3 },
+    { "id": "manual_time",    "label": "Manual entry time",   "unit": "min/mo", "start": 60, "current": 60, "target": 5, "lowerIsBetter": true }
+  ],
+  "milestones": [
+    { "id": "m1", "title": "Export a sample K-Bank statement", "target": "2026-08-31", "done": false },
+    { "id": "m2", "title": "Build the CSV import helper",       "target": "2026-09-15", "done": false },
+    { "id": "m3", "title": "First successful import into finance", "target": "2026-09-30", "done": false },
+    { "id": "m4", "title": "Monthly import routine established", "target": "2026-10-31", "done": false }
+  ],
+  "checklist": [
+    { "id": "c1", "title": "Download a statement from K PLUS",        "cadence": "once",    "done": false },
+    { "id": "c2", "title": "Confirm columns (date / description / amount)", "cadence": "once", "done": false },
+    { "id": "c3", "title": "Run the first import",                    "cadence": "once",    "done": false },
+    { "id": "c4", "title": "Categorize recurring vs one-off spend",   "cadence": "monthly", "done": false }
+  ]
+}

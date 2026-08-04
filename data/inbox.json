@@ -25,7 +25,7 @@
         "Build a parse -> finance.json import helper"
       ],
       "source": "Claude Code conversation, 2026-08-04",
-      "status": "idea"
+      "status": "promoted"
     }
   ]
 }
