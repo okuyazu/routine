@@ -246,6 +246,7 @@ a { color: var(--accent-2); }
 
 .muted { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .muted.small { font-size: 11.5px; margin-top: 10px; text-align: center; min-height: 14px; }
+#pfHint.err, #tkHint.err { color: var(--crit); font-size: 13px; font-weight: 600; }
 
 /* ---------- States ---------- */
 .empty, .loading { text-align: center; color: var(--muted); padding: 60px 20px; }

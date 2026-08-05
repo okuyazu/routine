@@ -528,7 +528,7 @@ async function submitProject() {
   const pasteMode = !el('pfPasteWrap').hidden;
   const btn = el('pfCreate');
   if (!pasteMode && !el('pfTitle').value.trim()) { el('pfHint').textContent = 'Please give the project a title.'; return; }
-  btn.disabled = true; el('pfHint').textContent = 'Creating…';
+  btn.disabled = true; el('pfHint').classList.remove('err'); el('pfHint').textContent = 'Creating…';
   try {
     if (pasteMode) {
       await createProjectFromMarkdown(el('pfPaste').value);
@@ -544,7 +544,7 @@ async function submitProject() {
     setTimeout(() => { el('projectSheet').hidden = true; btn.textContent = 'Create project'; }, 2600);
   } catch (e) {
     if (e.needToken) { el('projectSheet').hidden = true; openTokenSheet('Connect GitHub once, then create your project.'); }
-    else el('pfHint').textContent = e.message;
+    else { el('pfHint').textContent = '⚠︎ ' + e.message; el('pfHint').classList.add('err'); }
   } finally { btn.disabled = false; }
 }
 function openTokenSheet(hint) {
@@ -880,13 +880,60 @@ async function commitNewProject(rawTitle, md) {
 async function createProjectOnGitHub(form) {
   return commitNewProject(form.title, buildProjectMd(form));
 }
-async function createProjectFromMarkdown(md) {
-  const text = (md || '').trim();
-  const title = text ? parseProjectMd(text, '').title : '';
-  if (!text || !title || title === 'Untitled') {
-    throw new Error('Paste a note that has a "title:" line in its frontmatter.');
+// Leniently read a pasted note however an AI formatted it — missing --- fences,
+// multiple keys on one line, a ``` code fence, etc. — into a project object.
+function parseLoose(md) {
+  let text = (md || '').replace(/^﻿/, '').trim();
+  text = text.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```$/i, '').trim();
+  const field = (re) => { const m = text.match(re); return m ? m[1].trim() : ''; };
+  const title = field(/(?:^|\n)\s*title:\s*(.+)/i) || field(/(?:^|\n)#\s+(.+)/);
+  const id = field(/(?:^|[\s>])id:\s*([A-Za-z0-9._-]+)/);
+  const emoji = field(/(?:^|[\s>])emoji:\s*(\S+)/);
+  const color = field(/(?:^|[\s>])color:\s*"?(#[0-9a-fA-F]{3,8})"?/);
+  const target = field(/(?:^|[\s>])target:\s*(\d{4}-\d{2}-\d{2})/);
+  // Body = everything minus the frontmatter/key lines.
+  let body = text.replace(/^---[\s\S]*?\n---\n?/, '');
+  if (body === text) {
+    body = text.split('\n')
+      .filter((l) => !/^\s*(id|title|emoji|color|target)\s*:/i.test(l) && !/^\s*---\s*$/.test(l))
+      .join('\n');
   }
-  return commitNewProject(title, text + '\n');
+  const { intro, sections } = splitSections(body.trim());
+  return {
+    id, title, emoji, color, target,
+    description: intro.replace(/^#\s+.+\n?/, '').trim(),
+    metrics: parseMetrics(sections.progress),
+    milestones: parseTasks(sections.milestones).map((t) => ({ title: t.title, target: t.target, done: t.done })),
+    checklist: parseTasks(sections.checklist).map((t) => ({ title: t.title, cadence: t.cadence, done: t.done })),
+  };
+}
+// Re-serialize a project object into a clean, canonical note so the stored file
+// is always valid regardless of how the AI formatted its reply.
+function serializeNote(p) {
+  const out = ['---', `id: ${p.id || slugify(p.title)}`, `title: ${p.title}`];
+  if (p.emoji) out.push(`emoji: ${p.emoji}`);
+  if (p.color) out.push(`color: "${p.color}"`);
+  if (p.target) out.push(`target: ${p.target}`);
+  out.push('---', '');
+  if (p.description) out.push(p.description, '');
+  if (p.metrics.length) out.push('## Progress',
+    ...p.metrics.map((m) => `- ${m.label}: ${m.start} / ${m.current} / ${m.target}${m.unit ? ' ' + m.unit : ''}`), '');
+  if (p.milestones.length) out.push('## Milestones',
+    ...p.milestones.map((m) => `- [${m.done ? 'x' : ' '}] ${m.title}${m.target ? ` 📅 ${m.target}` : ''}`), '');
+  if (p.checklist.length) out.push('## Checklist',
+    ...p.checklist.map((c) => `- [${c.done ? 'x' : ' '}] ${c.title}${c.cadence ? ` (${c.cadence})` : ''}`), '');
+  if (p.metrics.length) {
+    const today = new Date().toISOString().slice(0, 10);
+    out.push('## History', `| date | ${p.metrics.map((m) => m.label).join(' | ')} |`,
+      `|---|${p.metrics.map(() => '---').join('|')}|`,
+      `| ${today} | ${p.metrics.map((m) => m.current).join(' | ')} |`, '');
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+async function createProjectFromMarkdown(md) {
+  const p = parseLoose(md);
+  if (!p.title) throw new Error('Couldn’t find a title. The note needs a line like:  title: My Project');
+  return commitNewProject(p.title, serializeNote(p));
 }
 // Prompt the user pastes at the end of any AI chat to get a ready-to-file note.
 const CONVERT_PROMPT =
