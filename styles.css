@@ -224,6 +224,26 @@ body {
 .steps li { margin: 7px 0; font-size: 14.5px; }
 .view > .btn { width: 100%; }
 
+/* ---------- forms (new project / token) ---------- */
+.form-sheet { max-height: 88vh; overflow-y: auto; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.field > span { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.field > span em { font-style: normal; font-weight: 400; opacity: .8; }
+.field-row { display: flex; gap: 10px; }
+.field-row .grow { flex: 1; } .field-row .narrow { width: 92px; flex: none; }
+.field input, .field textarea, #tkInput {
+  width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 10px; padding: 11px 12px; font-size: 15px; font-family: inherit;
+}
+.field textarea { resize: vertical; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#tkInput { margin-top: 6px; }
+.swatches { display: flex; gap: 7px; flex-wrap: wrap; padding-top: 4px; }
+.swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg) inset; }
+.steps-num { margin: 6px 0 4px; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.steps-num strong { color: var(--text); font-weight: 600; }
+a { color: var(--accent-2); }
+
 .muted { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .muted.small { font-size: 11.5px; margin-top: 10px; text-align: center; min-height: 14px; }
 

@@ -43,6 +43,56 @@
     </div>
   </div>
 
+  <!-- New project sheet -->
+  <div class="sheet-backdrop" id="projectSheet" hidden>
+    <div class="sheet form-sheet" role="dialog" aria-modal="true" aria-labelledby="projectSheetTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="projectSheetTitle">New project</h2>
+      <div class="field-row">
+        <label class="field grow"><span>Title</span><input id="pfTitle" type="text" placeholder="Marathon Training" /></label>
+        <label class="field narrow"><span>Emoji</span><input id="pfEmoji" type="text" placeholder="🏃" maxlength="4" /></label>
+      </div>
+      <div class="field-row">
+        <label class="field grow"><span>Target date</span><input id="pfTarget" type="date" /></label>
+        <div class="field narrow"><span>Color</span><div class="swatches" id="pfSwatches"></div></div>
+      </div>
+      <label class="field"><span>Description</span><input id="pfDesc" type="text" placeholder="What this project is about." /></label>
+      <label class="field"><span>Progress metrics <em>— one per line: Label: start / current / target unit</em></span>
+        <textarea id="pfMetrics" rows="3" spellcheck="false" placeholder="Weekly distance: 0 / 15 / 50 km"></textarea></label>
+      <label class="field"><span>Milestones <em>— one per line: Title | YYYY-MM-DD</em></span>
+        <textarea id="pfMilestones" rows="3" spellcheck="false" placeholder="First 10K run | 2026-09-30"></textarea></label>
+      <label class="field"><span>Checklist <em>— one per line, optional (cadence)</em></span>
+        <textarea id="pfChecklist" rows="2" spellcheck="false" placeholder="Long run (weekly)"></textarea></label>
+      <div class="sheet-actions">
+        <button class="btn primary" id="pfCreate">Create project</button>
+        <button class="btn ghost" id="pfCancel">Cancel</button>
+      </div>
+      <p class="muted small" id="pfHint"></p>
+      <p class="muted small" style="text-align:center"><a href="#" id="pfConnLink">GitHub connection</a></p>
+    </div>
+  </div>
+
+  <!-- GitHub connection sheet -->
+  <div class="sheet-backdrop" id="tokenSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tokenSheetTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="tokenSheetTitle">Connect GitHub</h2>
+      <p class="muted">To create and edit projects from inside the app, paste a GitHub access token.
+        It's stored <strong>only on this device</strong> and never in the app or the repo.</p>
+      <ol class="steps-num">
+        <li>Open <strong>github.com → Settings → Developer settings → Fine-grained tokens</strong>.</li>
+        <li>Repository access → <strong>Only select repositories → your benchmarks repo</strong>.</li>
+        <li>Permissions → <strong>Contents: Read and write</strong>. Generate, then copy.</li>
+      </ol>
+      <input id="tkInput" type="password" placeholder="github_pat_…" spellcheck="false" autocomplete="off" />
+      <div class="sheet-actions">
+        <button class="btn primary" id="tkSave">Save token</button>
+        <button class="btn ghost" id="tkClear">Remove</button>
+      </div>
+      <p class="muted small" id="tkHint"></p>
+    </div>
+  </div>
+
   <!-- Capture-input sheet (editable) -->
   <div class="sheet-backdrop" id="captureSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="captureTitle">

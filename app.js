@@ -495,10 +495,51 @@ function renderHome() {
     ? `<div class="inbox-banner" data-go-inbox>💡 Idea Inbox
          <span>${openIdeas} ${openIdeas === 1 ? 'idea' : 'ideas'} waiting →</span></div>`
     : '';
-  view.innerHTML = `${banner}${buildDashboard()}<div class="section-label">Projects</div><div class="cards">${cards}</div>`;
+  view.innerHTML = `${banner}${buildDashboard()}<div class="section-label">Projects</div><div class="cards">${cards}</div>
+    <button class="btn ghost" id="newProjectBtn" style="margin-top:14px">＋ New project</button>`;
   view.querySelectorAll('[data-go]').forEach((c) =>
     c.addEventListener('click', () => { location.hash = `#/${c.dataset.go}`; }));
   view.querySelector('[data-go-inbox]')?.addEventListener('click', () => { location.hash = '#/inbox'; });
+  el('newProjectBtn').addEventListener('click', openProjectForm);
+}
+
+/* ---------- new-project form ---------- */
+let pfColor = '#7c3aed';
+function openProjectForm() {
+  ['pfTitle', 'pfEmoji', 'pfTarget', 'pfDesc', 'pfMetrics', 'pfMilestones', 'pfChecklist'].forEach((id) => { el(id).value = ''; });
+  pfColor = PROJECT_COLORS[0];
+  el('pfSwatches').innerHTML = PROJECT_COLORS.map((c) =>
+    `<button type="button" class="swatch${c === pfColor ? ' on' : ''}" data-c="${c}" style="background:${c}" aria-label="color ${c}"></button>`).join('');
+  el('pfSwatches').querySelectorAll('.swatch').forEach((b) => b.addEventListener('click', () => {
+    pfColor = b.dataset.c;
+    el('pfSwatches').querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+  el('pfHint').textContent = GH.token ? '' : 'Tip: connect GitHub once (link below) to save projects.';
+  el('projectSheet').hidden = false;
+}
+async function submitProject() {
+  const form = {
+    title: el('pfTitle').value.trim(), emoji: el('pfEmoji').value.trim(), color: pfColor,
+    target: el('pfTarget').value.trim(), description: el('pfDesc').value.trim(),
+    metrics: el('pfMetrics').value, milestones: el('pfMilestones').value, checklist: el('pfChecklist').value,
+  };
+  if (!form.title) { el('pfHint').textContent = 'Please give the project a title.'; return; }
+  const btn = el('pfCreate');
+  btn.disabled = true; el('pfHint').textContent = 'Creating…';
+  try {
+    await createProjectOnGitHub(form);
+    el('pfHint').textContent = `✓ Created “${form.title}”. It appears in the app after GitHub publishes (~1 min).`;
+    btn.textContent = 'Done';
+    setTimeout(() => { el('projectSheet').hidden = true; btn.textContent = 'Create project'; }, 2600);
+  } catch (e) {
+    if (e.needToken) { el('projectSheet').hidden = true; openTokenSheet('Connect GitHub once, then create your project.'); }
+    else el('pfHint').textContent = e.message;
+  } finally { btn.disabled = false; }
+}
+function openTokenSheet(hint) {
+  el('tkInput').value = GH.token;
+  el('tkHint').textContent = hint || (GH.token ? 'A token is saved on this device.' : '');
+  el('tokenSheet').hidden = false;
 }
 
 /* ---------- idea inbox ---------- */
@@ -727,6 +768,105 @@ function renderDetail(p) {
   });
 }
 
+/* ---------- create projects from inside the app (writes to GitHub) ---------- */
+const PROJECT_COLORS = ['#7c3aed', '#f97316', '#22c55e', '#38bdf8', '#14b8a6', '#eab308', '#ec4899', '#60a5fa'];
+const GH = {
+  get owner() {
+    const h = location.hostname;
+    return h.endsWith('github.io') ? h.split('.')[0] : 'okuyazu';
+  },
+  get repo() { return location.pathname.split('/').filter(Boolean)[0] || 'routine'; },
+  branch: 'main',
+  get token() { return localStorage.getItem('benchmarks:ghtoken:v1') || ''; },
+  set token(v) {
+    if (v) localStorage.setItem('benchmarks:ghtoken:v1', v);
+    else localStorage.removeItem('benchmarks:ghtoken:v1');
+  },
+};
+const b64encode = (s) => btoa(unescape(encodeURIComponent(s)));
+const b64decode = (s) => decodeURIComponent(escape(atob(s.replace(/\s/g, ''))));
+const ghHeaders = () => ({
+  Authorization: `Bearer ${GH.token}`,
+  Accept: 'application/vnd.github+json',
+  'X-GitHub-Api-Version': '2022-11-28',
+});
+const ghUrl = (path) =>
+  `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+async function ghError(res) {
+  const map = { 401: 'Token invalid or expired.', 403: 'Token lacks “Contents: write” permission.', 404: 'Repo or file not found — check the token’s repository access.', 409: 'Conflict — try again.', 422: 'A project with that name may already exist.' };
+  let extra = '';
+  try { extra = (await res.json()).message || ''; } catch { /* ignore */ }
+  return new Error(map[res.status] || `GitHub error ${res.status}. ${extra}`.trim());
+}
+
+// Turn the form fields into a Markdown project note (+ a seeded History table).
+function buildProjectMd(f) {
+  const clean = (t) => t.split('\n').map((s) => s.trim()).filter(Boolean);
+  const out = ['---', `id: ${slugify(f.title)}`, `title: ${f.title}`];
+  if (f.emoji) out.push(`emoji: ${f.emoji}`);
+  if (f.color) out.push(`color: "${f.color}"`);
+  if (f.target) out.push(`target: ${f.target}`);
+  out.push('---', '');
+  if (f.description) out.push(f.description, '');
+
+  const metrics = clean(f.metrics).map((l) => l.replace(/^-\s*/, ''));
+  if (metrics.length) { out.push('## Progress', ...metrics.map((m) => `- ${m}`), ''); }
+
+  const ms = clean(f.milestones);
+  if (ms.length) {
+    out.push('## Milestones');
+    for (const l of ms) {
+      const [t, d] = l.replace(/^-\s*(\[[ x]\]\s*)?/, '').split('|').map((x) => (x || '').trim());
+      out.push(`- [ ] ${t}${d ? ` 📅 ${d}` : ''}`);
+    }
+    out.push('');
+  }
+  const cl = clean(f.checklist);
+  if (cl.length) { out.push('## Checklist', ...cl.map((l) => `- [ ] ${l.replace(/^-\s*(\[[ x]\]\s*)?/, '')}`), ''); }
+
+  const parsed = parseMetrics(metrics.map((m) => `- ${m}`).join('\n'));
+  if (parsed.length) {
+    const today = new Date().toISOString().slice(0, 10);
+    out.push('## History',
+      `| date | ${parsed.map((p) => p.label).join(' | ')} |`,
+      `|---|${parsed.map(() => '---').join('|')}|`,
+      `| ${today} | ${parsed.map((p) => p.current).join(' | ')} |`, '');
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+
+// Create projects/<Title>.md and add it to data/manifest.json.
+async function createProjectOnGitHub(form) {
+  if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; }
+  const safeTitle = form.title.replace(/[\\/:*?"<>|]/g, '').trim();
+  const path = `projects/${safeTitle}.md`;
+
+  // refuse to overwrite an existing note
+  const head = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
+  if (head.ok) throw new Error('A project note with that name already exists.');
+  if (head.status !== 404) throw await ghError(head);
+
+  const put = await fetch(ghUrl(path), {
+    method: 'PUT', headers: ghHeaders(),
+    body: JSON.stringify({ message: `Add project: ${safeTitle}`, content: b64encode(buildProjectMd(form)), branch: GH.branch }),
+  });
+  if (!put.ok) throw await ghError(put);
+
+  // add the path to the manifest's projects list
+  const mres = await fetch(ghUrl('data/manifest.json') + `?ref=${GH.branch}`, { headers: ghHeaders() });
+  if (!mres.ok) throw await ghError(mres);
+  const mjson = await mres.json();
+  const manifest = JSON.parse(b64decode(mjson.content));
+  manifest.projects = manifest.projects || [];
+  if (!manifest.projects.includes(path)) manifest.projects.push(path);
+  const mput = await fetch(ghUrl('data/manifest.json'), {
+    method: 'PUT', headers: ghHeaders(),
+    body: JSON.stringify({ message: `List project: ${safeTitle}`, content: b64encode(JSON.stringify(manifest, null, 2) + '\n'), sha: mjson.sha, branch: GH.branch }),
+  });
+  if (!mput.ok) throw await ghError(mput);
+}
+
 /* ---------- sync snapshot ---------- */
 function buildSnapshot() {
   const out = { generated: new Date().toISOString(), projects: {} };
@@ -792,6 +932,19 @@ el('copyBtn').addEventListener('click', async () => {
     el('copyHint').textContent = 'Select all and copy manually.';
   }
 });
+
+// New-project + GitHub connection sheets
+el('pfCancel').addEventListener('click', () => { el('projectSheet').hidden = true; });
+el('projectSheet').addEventListener('click', (e) => { if (e.target === el('projectSheet')) el('projectSheet').hidden = true; });
+el('pfCreate').addEventListener('click', submitProject);
+el('pfConnLink').addEventListener('click', (e) => { e.preventDefault(); el('projectSheet').hidden = true; openTokenSheet(); });
+el('tkSave').addEventListener('click', () => {
+  GH.token = el('tkInput').value.trim();
+  el('tkHint').textContent = GH.token ? 'Saved on this device ✓' : 'Enter a token to save.';
+  if (GH.token) setTimeout(() => { el('tokenSheet').hidden = true; openProjectForm(); }, 700);
+});
+el('tkClear').addEventListener('click', () => { GH.token = ''; el('tkInput').value = ''; el('tkHint').textContent = 'Removed from this device.'; });
+el('tokenSheet').addEventListener('click', (e) => { if (e.target === el('tokenSheet')) el('tokenSheet').hidden = true; });
 
 // Capture-input sheet
 function closeCaptureSheet() { el('captureSheet').hidden = true; }

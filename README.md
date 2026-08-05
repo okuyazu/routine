@@ -76,6 +76,15 @@ Then add the file path to the `projects` list in [`data/manifest.json`](data/man
 > note in `projects/` following the format in the README, with realistic metrics,
 > dated milestones, and a checklist, then add its path to `data/manifest.json`."
 
+### From inside the app
+
+Tap **＋ New project** on the home screen. The first time, tap **GitHub
+connection** and paste a **fine-grained token** (Settings → Developer settings →
+Fine-grained tokens; scope it to *only this repo* with **Contents: Read and
+write**). The token is stored **only on your device**, never in the app or repo,
+and you can remove or revoke it anytime. Fill in the form and the app commits the
+note for you; it shows up after GitHub republishes (~1 min).
+
 ### Format reference
 
 | Part | Meaning |
