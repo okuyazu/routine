@@ -101,6 +101,22 @@
     </div>
   </div>
 
+  <!-- Edit-note sheet -->
+  <div class="sheet-backdrop" id="editSheet" hidden>
+    <div class="sheet form-sheet" role="dialog" aria-modal="true" aria-labelledby="editSheetTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="editSheetTitle">Edit note</h2>
+      <p class="muted">The raw Markdown for this project. Edit anything — add a milestone, fix a metric, change the target — then save.</p>
+      <textarea id="editArea" rows="14" spellcheck="false"></textarea>
+      <div class="sheet-actions">
+        <button class="btn primary" id="editSave">Save changes</button>
+        <button class="btn ghost" id="editCancel">Cancel</button>
+      </div>
+      <button class="btn ghost danger" id="editDelete" style="width:100%;margin-top:10px">Delete project</button>
+      <p class="muted small" id="editHint"></p>
+    </div>
+  </div>
+
   <!-- Capture-input sheet (editable) -->
   <div class="sheet-backdrop" id="captureSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="captureTitle">

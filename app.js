@@ -269,7 +269,9 @@ async function loadData() {
     fetch(encodeURI(path) + bust).then((r) => (r.ok ? r.text() : null)).catch(() => null);
 
   const projTexts = await Promise.all((manifest.projects || []).map(getText));
-  PROJECTS = projTexts.map((t, i) => (t ? parseProjectMd(t, manifest.projects[i]) : null)).filter(Boolean);
+  PROJECTS = projTexts.map((t, i) => (t
+    ? Object.assign(parseProjectMd(t, manifest.projects[i]), { path: manifest.projects[i], raw: t })
+    : null)).filter(Boolean);
 
   const ideaTexts = await Promise.all((manifest.inbox || []).map(getText));
   INBOX = ideaTexts.map((t, i) => (t ? parseIdeaMd(t, manifest.inbox[i]) : null)).filter(Boolean);
@@ -750,6 +752,7 @@ function renderDetail(p) {
     ${metrics ? `<div class="section-label">Progress</div>${metrics}` : ''}
     ${milestones ? `<div class="section-label">Milestones</div><div class="timeline">${milestones}</div>` : ''}
     ${checklist ? `<div class="section-label">Checklist</div>${checklist}` : ''}
+    ${p.path ? `<button class="btn ghost" id="editNoteBtn" style="margin-top:20px">✎ Edit note</button>` : ''}
   `;
 
   // wire up toggles
@@ -777,6 +780,18 @@ function renderDetail(p) {
       dot.textContent = next ? '✓' : '';
     });
   });
+  el('editNoteBtn')?.addEventListener('click', () => openNoteEditor(p));
+}
+
+/* ---------- edit / delete a project note ---------- */
+let editingPath = null;
+let editDeleteArmed = false;
+function openNoteEditor(p) {
+  editingPath = p.path;
+  el('editArea').value = p.raw || '';
+  el('editHint').textContent = ''; el('editHint').classList.remove('err');
+  el('editDelete').textContent = 'Delete project'; editDeleteArmed = false;
+  el('editSheet').hidden = false;
 }
 
 /* ---------- create projects from inside the app (writes to GitHub) ---------- */
@@ -845,6 +860,44 @@ function buildProjectMd(f) {
       `| ${today} | ${parsed.map((p) => p.current).join(' | ')} |`, '');
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+}
+
+async function ghGetFile(path) {
+  const r = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
+  if (r.status === 404) return null;
+  if (!r.ok) throw await ghError(r);
+  const j = await r.json();
+  return { sha: j.sha, text: b64decode(j.content) };
+}
+async function ghPutFile(path, text, message, sha) {
+  const body = { message, content: b64encode(text), branch: GH.branch };
+  if (sha) body.sha = sha;
+  const r = await fetch(ghUrl(path), { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+  if (!r.ok) throw await ghError(r);
+}
+async function ghDeleteFile(path, message, sha) {
+  const r = await fetch(ghUrl(path), { method: 'DELETE', headers: ghHeaders(), body: JSON.stringify({ message, sha, branch: GH.branch }) });
+  if (!r.ok) throw await ghError(r);
+}
+function requireToken() { if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; } }
+
+// Save an edited note (overwrites the file with the textarea contents).
+async function saveNoteEdit(path, newText) {
+  requireToken();
+  const cur = await ghGetFile(path);
+  await ghPutFile(path, newText.trim() + '\n', `Edit ${path.split('/').pop()}`, cur ? cur.sha : undefined);
+}
+// Delete a project note and remove it from the manifest.
+async function deleteNoteAndUnlist(path) {
+  requireToken();
+  const cur = await ghGetFile(path);
+  if (cur) await ghDeleteFile(path, `Delete ${path.split('/').pop()}`, cur.sha);
+  const m = await ghGetFile('data/manifest.json');
+  if (m) {
+    const manifest = JSON.parse(m.text);
+    manifest.projects = (manifest.projects || []).filter((p) => p !== path);
+    await ghPutFile('data/manifest.json', JSON.stringify(manifest, null, 2) + '\n', `Unlist ${path.split('/').pop()}`, m.sha);
+  }
 }
 
 // Commit projects/<Title>.md and add it to data/manifest.json.
@@ -1048,6 +1101,35 @@ el('tkSave').addEventListener('click', () => {
 });
 el('tkClear').addEventListener('click', () => { GH.token = ''; el('tkInput').value = ''; el('tkHint').textContent = 'Removed from this device.'; });
 el('tokenSheet').addEventListener('click', (e) => { if (e.target === el('tokenSheet')) el('tokenSheet').hidden = true; });
+
+// Edit-note sheet
+el('editCancel').addEventListener('click', () => { el('editSheet').hidden = true; });
+el('editSheet').addEventListener('click', (e) => { if (e.target === el('editSheet')) el('editSheet').hidden = true; });
+el('editSave').addEventListener('click', async () => {
+  const btn = el('editSave');
+  btn.disabled = true; el('editHint').classList.remove('err'); el('editHint').textContent = 'Saving…';
+  try {
+    await saveNoteEdit(editingPath, el('editArea').value);
+    el('editHint').textContent = '✓ Saved. Changes appear after GitHub publishes (~1 min).';
+    setTimeout(() => { el('editSheet').hidden = true; }, 2400);
+  } catch (e) {
+    if (e.needToken) { el('editSheet').hidden = true; openTokenSheet('Connect GitHub once, then edit your project.'); }
+    else { el('editHint').textContent = '⚠︎ ' + e.message; el('editHint').classList.add('err'); }
+  } finally { btn.disabled = false; }
+});
+el('editDelete').addEventListener('click', async () => {
+  if (!editDeleteArmed) { editDeleteArmed = true; el('editDelete').textContent = 'Tap again to confirm delete'; return; }
+  const btn = el('editDelete');
+  btn.disabled = true; el('editHint').classList.remove('err'); el('editHint').textContent = 'Deleting…';
+  try {
+    await deleteNoteAndUnlist(editingPath);
+    el('editHint').textContent = '✓ Deleted. It disappears after GitHub publishes (~1 min).';
+    setTimeout(() => { el('editSheet').hidden = true; location.hash = ''; }, 2000);
+  } catch (e) {
+    if (e.needToken) { el('editSheet').hidden = true; openTokenSheet('Connect GitHub once to delete this project.'); }
+    else { el('editHint').textContent = '⚠︎ ' + e.message; el('editHint').classList.add('err'); btn.textContent = 'Delete project'; editDeleteArmed = false; }
+  } finally { btn.disabled = false; }
+});
 
 // Capture-input sheet
 function closeCaptureSheet() { el('captureSheet').hidden = true; }
