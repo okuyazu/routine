@@ -1050,6 +1050,7 @@ function openSync() {
 }
 
 /* ---------- boot ---------- */
+let lastLoad = 0;
 async function boot() {
   view.innerHTML = `<div class="loading"><div class="spinner"></div>Loading your benchmarks…</div>`;
   try {
@@ -1057,6 +1058,7 @@ async function boot() {
     handleShareTarget();
     updateInboxBadge();
     router();
+    lastLoad = Date.now();
   } catch (e) {
     view.innerHTML = `<div class="empty"><h3>Couldn't load data</h3>
       <p class="muted">Make sure <code>data/manifest.json</code> exists and is valid JSON.
@@ -1144,9 +1146,30 @@ el('captureSave').addEventListener('click', () => {
 
 boot();
 
-/* ---------- service worker ---------- */
+// Re-fetch data when the app is reopened/refocused (so edits made elsewhere,
+// or by me, show up without a manual reload). Guarded so it only runs when the
+// app has been in the background a while and no sheet is open.
+async function refreshData() {
+  const sheetOpen = [...document.querySelectorAll('.sheet-backdrop')].some((s) => !s.hidden);
+  if (sheetOpen) return;
+  try { await loadData(); updateInboxBadge(); router(); lastLoad = Date.now(); } catch { /* offline: keep showing current */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - lastLoad > 15000) refreshData();
+});
+
+/* ---------- service worker (auto-updating) ---------- */
 if ('serviceWorker' in navigator) {
+  // When a new service worker takes over, reload once so the newest app loads.
+  let reloading = false;
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return; reloading = true; location.reload();
+    });
+  }
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js')
+      .then((reg) => { reg.update(); setInterval(() => reg.update(), 60 * 60 * 1000); })
+      .catch(() => {});
   });
 }
