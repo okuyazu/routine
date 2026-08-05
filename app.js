@@ -885,12 +885,18 @@ async function createProjectOnGitHub(form) {
 function parseLoose(md) {
   let text = (md || '').replace(/^﻿/, '').trim();
   text = text.replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```$/i, '').trim();
-  const field = (re) => { const m = text.match(re); return m ? m[1].trim() : ''; };
-  const title = field(/(?:^|\n)\s*title:\s*(.+)/i) || field(/(?:^|\n)#\s+(.+)/);
-  const id = field(/(?:^|[\s>])id:\s*([A-Za-z0-9._-]+)/);
-  const emoji = field(/(?:^|[\s>])emoji:\s*(\S+)/);
-  const color = field(/(?:^|[\s>])color:\s*"?(#[0-9a-fA-F]{3,8})"?/);
-  const target = field(/(?:^|[\s>])target:\s*(\d{4}-\d{2}-\d{2})/);
+  // Read a frontmatter key's value whether keys are one-per-line OR several
+  // crammed on one line — stop the value at the next known key or line end.
+  const KEYS = 'id|title|emoji|color|target';
+  const field = (key) => {
+    const m = text.match(new RegExp('(?:^|[\\s>])' + key + ':\\s*(.+?)(?=\\s+(?:' + KEYS + '):|\\s*$)', 'im'));
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+  };
+  const title = field('title') || ((text.match(/(?:^|\n)#\s+(.+)/) || [, ''])[1] || '').trim();
+  const id = field('id');
+  const emoji = field('emoji');
+  const color = (field('color').match(/#[0-9a-fA-F]{3,8}/) || [''])[0];
+  const target = (field('target').match(/\d{4}-\d{2}-\d{2}/) || [''])[0];
   // Body = everything minus the frontmatter/key lines.
   let body = text.replace(/^---[\s\S]*?\n---\n?/, '');
   if (body === text) {
