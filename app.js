@@ -752,7 +752,10 @@ function renderDetail(p) {
     ${metrics ? `<div class="section-label">Progress</div>${metrics}` : ''}
     ${milestones ? `<div class="section-label">Milestones</div><div class="timeline">${milestones}</div>` : ''}
     ${checklist ? `<div class="section-label">Checklist</div>${checklist}` : ''}
-    ${p.path ? `<button class="btn ghost" id="editNoteBtn" style="margin-top:20px">✎ Edit note</button>` : ''}
+    ${p.path ? `<div class="detail-actions">
+      <button class="btn ghost" id="importCsvBtn">⭳ Import CSV</button>
+      <button class="btn ghost" id="editNoteBtn">✎ Edit note</button>
+    </div>` : ''}
   `;
 
   // wire up toggles
@@ -781,6 +784,7 @@ function renderDetail(p) {
     });
   });
   el('editNoteBtn')?.addEventListener('click', () => openNoteEditor(p));
+  el('importCsvBtn')?.addEventListener('click', () => openImportSheet(p));
 }
 
 /* ---------- edit / delete a project note ---------- */
@@ -1018,6 +1022,112 @@ target: <YYYY-MM-DD>
 
 Base the metrics, milestones, and dates on what we actually discussed.`;
 
+/* ---------- CSV import (parsed on-device) ---------- */
+function detectDelimiter(text) {
+  const line = text.split(/\r?\n/).find((l) => l.trim()) || '';
+  const cand = { ',': 0, ';': 0, '\t': 0, '|': 0 };
+  for (const ch of line) if (ch in cand) cand[ch]++;
+  return Object.keys(cand).sort((a, b) => cand[b] - cand[a])[0] || ',';
+}
+function parseCSV(text, delim) {
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(f); f = ''; }
+    else if (c === '\n') { row.push(f); rows.push(row); row = []; f = ''; }
+    else if (c !== '\r') f += c;
+  }
+  if (f.length || row.length) { row.push(f); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c.trim() !== ''));
+}
+// Parse a money cell: handles "1,234.56", "-1,234", "(1,234)", "฿1,234", "1234-".
+function csvNum(s) {
+  if (s == null) return NaN;
+  let t = String(s).trim(); if (!t) return NaN;
+  const neg = /^\(.*\)$/.test(t) || /^-/.test(t) || /-$/.test(t);
+  t = t.replace(/[^0-9.]/g, ''); if (t === '' || t === '.') return NaN;
+  const n = parseFloat(t); return isNaN(n) ? NaN : (neg ? -n : n);
+}
+const round2 = (x) => Math.round(x * 100) / 100;
+function analyzeColumn(rows, col) {
+  const v = rows.slice(1).map((r) => csvNum(r[col])).filter((n) => !isNaN(n));
+  return {
+    count: v.length,
+    sum: round2(v.reduce((a, b) => a + b, 0)),
+    out: round2(v.filter((x) => x < 0).reduce((a, b) => a + Math.abs(b), 0)),
+    in: round2(v.filter((x) => x > 0).reduce((a, b) => a + b, 0)),
+  };
+}
+function isDateLikeCol(rows, col) {
+  const cells = rows.slice(1).map((r) => (r[col] || '').trim()).filter(Boolean);
+  if (!cells.length) return false;
+  return cells.filter((c) => /\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(c)).length / cells.length > 0.5;
+}
+function autoDetectAmountCol(rows) {
+  const hdr = rows[0].map((h) => String(h).toLowerCase());
+  let best = 0, score = -1;
+  for (let c = 0; c < rows[0].length; c++) {
+    if (isDateLikeCol(rows, c)) continue;
+    if (/balance|running|bal\.|remaining/.test(hdr[c])) continue; // never a balance column
+    const a = analyzeColumn(rows, c); if (a.count === 0) continue;
+    // Trust column names first; fall back to numeric density + a small magnitude nudge.
+    let s = a.count + Math.min(a.out + a.in, 1e5) / 1e5;
+    if (/withdraw|debit|amount|expense|paid|spend|\bout\b|\bdr\b/.test(hdr[c])) s += 1e6;
+    else if (/deposit|credit|income|\bin\b|\bcr\b/.test(hdr[c])) s += 5e5;
+    if (s > score) { score = s; best = c; }
+  }
+  return best;
+}
+// Set a metric's "current" (middle number) in a note's ## Progress line.
+function setMetricCurrentInNote(raw, label, value) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^(-\\s*' + esc(label) + ':\\s*-?[\\d.]+\\s*/\\s*)(-?[\\d.]+)(\\s*/\\s*-?[\\d.]+.*)$', 'm');
+  if (!re.test(raw)) return null;
+  return raw.replace(re, (m, a, cur, c) => a + round2(value) + c);
+}
+const fmtMoney = (n) => round2(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+let importProject = null, csvRows = [];
+function openImportSheet(p) {
+  importProject = p;
+  el('csvFile').value = ''; el('csvResult').hidden = true;
+  el('csvHint').textContent = ''; el('csvHint').classList.remove('err');
+  el('importSheet').hidden = false;
+}
+function loadCsv(text) {
+  const rows = parseCSV(text, detectDelimiter(text));
+  if (rows.length < 2) { el('csvHint').textContent = '⚠︎ That CSV looks empty.'; el('csvHint').classList.add('err'); return; }
+  csvRows = rows;
+  const headers = rows[0].map((h, i) => h.trim() || `Column ${i + 1}`);
+  el('csvAmountCol').innerHTML = headers.map((h, i) => `<option value="${i}">${esc(h)}</option>`).join('');
+  el('csvAmountCol').value = String(autoDetectAmountCol(rows));
+  el('csvMetric').innerHTML = (importProject.metrics || []).length
+    ? importProject.metrics.map((m) => `<option value="${esc(m.label)}">${esc(m.label)}</option>`).join('')
+    : '<option value="">(this project has no metrics)</option>';
+  el('csvResult').hidden = false;
+  onAmountColChange();
+}
+// Pick a sensible default figure for the chosen column: money-out when the
+// column is signed (has negatives), otherwise the plain sum (debit-only column).
+function onAmountColChange() {
+  const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
+  el('csvFigure').value = a.out > 0 ? 'out' : 'sum';
+  updateCsvSummary();
+}
+function updateCsvSummary() {
+  const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
+  el('csvSummary').innerHTML =
+    `<div class="csv-stat"><span>${a.count}</span><label>transactions</label></div>
+     <div class="csv-stat"><span>${fmtMoney(a.out)}</span><label>money out</label></div>
+     <div class="csv-stat"><span>${fmtMoney(a.in)}</span><label>money in</label></div>`;
+  const fig = el('csvFigure').value;
+  const val = fig === 'count' ? a.count : a[fig];
+  const metric = (importProject.metrics || []).find((m) => m.label === el('csvMetric').value);
+  el('csvPreview').textContent = metric ? `${metric.label}:  ${metric.current} → ${round2(val)}` : 'No metric to update in this project.';
+}
+
 /* ---------- sync snapshot ---------- */
 function buildSnapshot() {
   const out = { generated: new Date().toISOString(), projects: {} };
@@ -1103,6 +1213,41 @@ el('tkSave').addEventListener('click', () => {
 });
 el('tkClear').addEventListener('click', () => { GH.token = ''; el('tkInput').value = ''; el('tkHint').textContent = 'Removed from this device.'; });
 el('tokenSheet').addEventListener('click', (e) => { if (e.target === el('tokenSheet')) el('tokenSheet').hidden = true; });
+
+// CSV import sheet
+el('csvCancel').addEventListener('click', () => { el('importSheet').hidden = true; });
+el('importSheet').addEventListener('click', (e) => { if (e.target === el('importSheet')) el('importSheet').hidden = true; });
+el('csvFile').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { try { loadCsv(String(rd.result)); } catch { el('csvHint').textContent = '⚠︎ Could not read that file.'; el('csvHint').classList.add('err'); } };
+  rd.onerror = () => { el('csvHint').textContent = '⚠︎ Could not read that file.'; el('csvHint').classList.add('err'); };
+  rd.readAsText(f);
+});
+el('csvAmountCol').addEventListener('change', onAmountColChange);
+['csvFigure', 'csvMetric'].forEach((id) => el(id).addEventListener('change', updateCsvSummary));
+el('csvApply').addEventListener('click', async () => {
+  const label = el('csvMetric').value;
+  if (!label) { el('csvHint').textContent = '⚠︎ This project has no metric to update. Add one first (Edit note).'; el('csvHint').classList.add('err'); return; }
+  const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
+  const fig = el('csvFigure').value;
+  const value = fig === 'count' ? a.count : a[fig];
+  const btn = el('csvApply');
+  btn.disabled = true; el('csvHint').classList.remove('err'); el('csvHint').textContent = 'Applying…';
+  try {
+    requireToken();
+    const newMd = setMetricCurrentInNote(importProject.raw, label, value);
+    if (!newMd) throw new Error('Couldn’t find that metric line in the note.');
+    const cur = await ghGetFile(importProject.path);
+    await ghPutFile(importProject.path, newMd.trim() + '\n', `Import CSV → ${label}`, cur ? cur.sha : undefined);
+    el('csvHint').textContent = '✓ Updated. Appears after GitHub publishes (~1 min).';
+    setTimeout(() => { el('importSheet').hidden = true; }, 2400);
+  } catch (e) {
+    if (e.needToken) { el('importSheet').hidden = true; openTokenSheet('Connect GitHub once, then import.'); }
+    else { el('csvHint').textContent = '⚠︎ ' + e.message; el('csvHint').classList.add('err'); }
+  } finally { btn.disabled = false; }
+});
 
 // Edit-note sheet
 el('editCancel').addEventListener('click', () => { el('editSheet').hidden = true; });

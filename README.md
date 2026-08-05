@@ -156,6 +156,15 @@ Claude/ChatGPT on this repo. It creates the project file (with metrics and
 milestones), adds it to `data/manifest.json`, and flips the idea's `status` to
 `"promoted"`.
 
+## Import a bank statement (CSV)
+
+Open a project → **⭳ Import CSV** → pick a statement file (e.g. exported from
+K PLUS). It's parsed **on your device — nothing is uploaded**. The app
+auto-detects the amount column (you can change it), shows money out / money in /
+transaction count, and lets you apply one of those figures to a project metric.
+Requires the GitHub connection (same token as creating projects), since it saves
+the number into the project note.
+
 ## Automatic sync from Garmin (optional)
 
 A scheduled GitHub Action ([`.github/workflows/garmin-sync.yml`](.github/workflows/garmin-sync.yml))

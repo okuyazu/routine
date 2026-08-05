@@ -9,6 +9,7 @@ target: 2026-10-31
 Get K-Bank spending into my Benchmarks finance view without manual entry.
 
 ## Progress
+- Monthly spend: 0 / 0 / 20000 ฿
 - Months auto-tracked: 0 / 0 / 3 months
 - Manual entry time: 60 / 60 / 5 min/mo
 
