@@ -505,8 +505,15 @@ function renderHome() {
 
 /* ---------- new-project form ---------- */
 let pfColor = '#7c3aed';
+function setPasteMode(on) {
+  el('pfForm').hidden = on;
+  el('pfPasteWrap').hidden = !on;
+  el('pfToggle').textContent = on ? '← Use the form instead' : 'Paste an AI note instead →';
+  el('projectSheetTitle').textContent = on ? 'New project from a note' : 'New project';
+}
 function openProjectForm() {
-  ['pfTitle', 'pfEmoji', 'pfTarget', 'pfDesc', 'pfMetrics', 'pfMilestones', 'pfChecklist'].forEach((id) => { el(id).value = ''; });
+  ['pfTitle', 'pfEmoji', 'pfTarget', 'pfDesc', 'pfMetrics', 'pfMilestones', 'pfChecklist', 'pfPaste'].forEach((id) => { el(id).value = ''; });
+  setPasteMode(false);
   pfColor = PROJECT_COLORS[0];
   el('pfSwatches').innerHTML = PROJECT_COLORS.map((c) =>
     `<button type="button" class="swatch${c === pfColor ? ' on' : ''}" data-c="${c}" style="background:${c}" aria-label="color ${c}"></button>`).join('');
@@ -518,17 +525,21 @@ function openProjectForm() {
   el('projectSheet').hidden = false;
 }
 async function submitProject() {
-  const form = {
-    title: el('pfTitle').value.trim(), emoji: el('pfEmoji').value.trim(), color: pfColor,
-    target: el('pfTarget').value.trim(), description: el('pfDesc').value.trim(),
-    metrics: el('pfMetrics').value, milestones: el('pfMilestones').value, checklist: el('pfChecklist').value,
-  };
-  if (!form.title) { el('pfHint').textContent = 'Please give the project a title.'; return; }
+  const pasteMode = !el('pfPasteWrap').hidden;
   const btn = el('pfCreate');
+  if (!pasteMode && !el('pfTitle').value.trim()) { el('pfHint').textContent = 'Please give the project a title.'; return; }
   btn.disabled = true; el('pfHint').textContent = 'Creating…';
   try {
-    await createProjectOnGitHub(form);
-    el('pfHint').textContent = `✓ Created “${form.title}”. It appears in the app after GitHub publishes (~1 min).`;
+    if (pasteMode) {
+      await createProjectFromMarkdown(el('pfPaste').value);
+    } else {
+      await createProjectOnGitHub({
+        title: el('pfTitle').value.trim(), emoji: el('pfEmoji').value.trim(), color: pfColor,
+        target: el('pfTarget').value.trim(), description: el('pfDesc').value.trim(),
+        metrics: el('pfMetrics').value, milestones: el('pfMilestones').value, checklist: el('pfChecklist').value,
+      });
+    }
+    el('pfHint').textContent = '✓ Created. It appears in the app after GitHub publishes (~1 min).';
     btn.textContent = 'Done';
     setTimeout(() => { el('projectSheet').hidden = true; btn.textContent = 'Create project'; }, 2600);
   } catch (e) {
@@ -836,24 +847,23 @@ function buildProjectMd(f) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
-// Create projects/<Title>.md and add it to data/manifest.json.
-async function createProjectOnGitHub(form) {
+// Commit projects/<Title>.md and add it to data/manifest.json.
+async function commitNewProject(rawTitle, md) {
   if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; }
-  const safeTitle = form.title.replace(/[\\/:*?"<>|]/g, '').trim();
+  const safeTitle = rawTitle.replace(/[\\/:*?"<>|#]/g, '').trim();
+  if (!safeTitle) throw new Error('The note needs a title.');
   const path = `projects/${safeTitle}.md`;
 
-  // refuse to overwrite an existing note
   const head = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
   if (head.ok) throw new Error('A project note with that name already exists.');
   if (head.status !== 404) throw await ghError(head);
 
   const put = await fetch(ghUrl(path), {
     method: 'PUT', headers: ghHeaders(),
-    body: JSON.stringify({ message: `Add project: ${safeTitle}`, content: b64encode(buildProjectMd(form)), branch: GH.branch }),
+    body: JSON.stringify({ message: `Add project: ${safeTitle}`, content: b64encode(md), branch: GH.branch }),
   });
   if (!put.ok) throw await ghError(put);
 
-  // add the path to the manifest's projects list
   const mres = await fetch(ghUrl('data/manifest.json') + `?ref=${GH.branch}`, { headers: ghHeaders() });
   if (!mres.ok) throw await ghError(mres);
   const mjson = await mres.json();
@@ -865,7 +875,42 @@ async function createProjectOnGitHub(form) {
     body: JSON.stringify({ message: `List project: ${safeTitle}`, content: b64encode(JSON.stringify(manifest, null, 2) + '\n'), sha: mjson.sha, branch: GH.branch }),
   });
   if (!mput.ok) throw await ghError(mput);
+  return safeTitle;
 }
+async function createProjectOnGitHub(form) {
+  return commitNewProject(form.title, buildProjectMd(form));
+}
+async function createProjectFromMarkdown(md) {
+  const text = (md || '').trim();
+  const title = text ? parseProjectMd(text, '').title : '';
+  if (!text || !title || title === 'Untitled') {
+    throw new Error('Paste a note that has a "title:" line in its frontmatter.');
+  }
+  return commitNewProject(title, text + '\n');
+}
+// Prompt the user pastes at the end of any AI chat to get a ready-to-file note.
+const CONVERT_PROMPT =
+`Turn our conversation into ONE project for my "Benchmarks" app. Output only a Markdown note — no commentary — in exactly this format:
+
+---
+id: short-slug
+title: <Project name>
+emoji: <one emoji>
+color: "#7c3aed"
+target: <YYYY-MM-DD>
+---
+<one-line description>
+
+## Progress
+- <Metric>: <start> / <current> / <target> <unit>
+
+## Milestones
+- [ ] <Milestone> 📅 <YYYY-MM-DD>
+
+## Checklist
+- [ ] <Recurring task> (weekly)
+
+Base the metrics, milestones, and dates on what we actually discussed.`;
 
 /* ---------- sync snapshot ---------- */
 function buildSnapshot() {
@@ -937,6 +982,11 @@ el('copyBtn').addEventListener('click', async () => {
 el('pfCancel').addEventListener('click', () => { el('projectSheet').hidden = true; });
 el('projectSheet').addEventListener('click', (e) => { if (e.target === el('projectSheet')) el('projectSheet').hidden = true; });
 el('pfCreate').addEventListener('click', submitProject);
+el('pfToggle').addEventListener('click', (e) => { e.preventDefault(); setPasteMode(el('pfPasteWrap').hidden); });
+el('pfCopyPrompt').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(CONVERT_PROMPT); el('pfHint').textContent = 'Prompt copied — paste it at the end of your AI chat, then paste its reply above.'; }
+  catch { el('pfPaste').value = CONVERT_PROMPT; el('pfHint').textContent = 'Copy the prompt text above and paste it into your AI chat.'; }
+});
 el('pfConnLink').addEventListener('click', (e) => { e.preventDefault(); el('projectSheet').hidden = true; openTokenSheet(); });
 el('tkSave').addEventListener('click', () => {
   GH.token = el('tkInput').value.trim();

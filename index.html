@@ -48,6 +48,7 @@
     <div class="sheet form-sheet" role="dialog" aria-modal="true" aria-labelledby="projectSheetTitle">
       <div class="sheet-handle"></div>
       <h2 id="projectSheetTitle">New project</h2>
+      <div id="pfForm">
       <div class="field-row">
         <label class="field grow"><span>Title</span><input id="pfTitle" type="text" placeholder="Marathon Training" /></label>
         <label class="field narrow"><span>Emoji</span><input id="pfEmoji" type="text" placeholder="🏃" maxlength="4" /></label>
@@ -63,6 +64,13 @@
         <textarea id="pfMilestones" rows="3" spellcheck="false" placeholder="First 10K run | 2026-09-30"></textarea></label>
       <label class="field"><span>Checklist <em>— one per line, optional (cadence)</em></span>
         <textarea id="pfChecklist" rows="2" spellcheck="false" placeholder="Long run (weekly)"></textarea></label>
+      </div><!-- /pfForm -->
+      <div id="pfPasteWrap" hidden>
+        <label class="field"><span>Paste a project note from an AI <em>— Markdown with frontmatter</em></span>
+          <textarea id="pfPaste" rows="9" spellcheck="false" placeholder="Paste the note the AI wrote here…"></textarea></label>
+        <button class="btn ghost" id="pfCopyPrompt" type="button" style="width:100%">📋 Copy the AI prompt to paste in your chat</button>
+      </div>
+      <p class="muted small" style="text-align:center;margin-top:12px"><a href="#" id="pfToggle">Paste an AI note instead →</a></p>
       <div class="sheet-actions">
         <button class="btn primary" id="pfCreate">Create project</button>
         <button class="btn ghost" id="pfCancel">Cancel</button>
