@@ -361,6 +361,7 @@ async function loadData() {
 
   el('appTitle').textContent = manifest.app || 'My Benchmarks';
   el('appTagline').textContent = manifest.tagline || '';
+  document.title = manifest.app || 'My Benchmarks';
 }
 
 function updateInboxBadge() {
@@ -547,9 +548,18 @@ function buildDashboard() {
 /* ---------- home ---------- */
 function renderHome() {
   if (!PROJECTS.length) {
-    view.innerHTML = `<div class="empty"><h3>No projects yet</h3>
-      <p class="muted">Add a JSON file in <code>/data</code> and list it in
-      <code>manifest.json</code>. Ask Claude or ChatGPT to do it for you.</p></div>`;
+    view.innerHTML = `<div class="empty">
+      <h3>Welcome 👋</h3>
+      <p class="muted">Track milestones and progress for any goal. Create your first project to begin —
+        or capture an idea to shape later.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:22px auto 0">
+        <button class="btn primary" id="firstProjectBtn">＋ New project</button>
+        <button class="btn ghost" id="firstInboxBtn">💡 Capture an idea</button>
+        <button class="btn ghost" id="firstConnectBtn">Connect GitHub</button>
+      </div></div>`;
+    el('firstProjectBtn').addEventListener('click', openProjectForm);
+    el('firstInboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
+    el('firstConnectBtn').addEventListener('click', () => openTokenSheet());
     return;
   }
   const cards = [...PROJECTS].sort((a, b) => projectProgress(b) - projectProgress(a)).map((p) => {

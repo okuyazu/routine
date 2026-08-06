@@ -1,16 +1,38 @@
 # My Benchmarks 📊
 
-A personal benchmark tracker for **any** goal you can think of — Hyrox training,
-financial goals, 3D printing projects, and more. It runs as an installable app on
-your Android phone, shows milestones and progress, and is designed to be edited
-with **Claude or ChatGPT**.
+A personal benchmark tracker for **any** goal — fitness, savings, a hobby, a
+project. It installs as an app on your phone, shows milestones and progress, and
+every project is a plain Markdown note you can edit by hand, in Obsidian, or with
+an AI. No backend, no accounts, no cost.
 
 - ✅ **Checkmarks on your phone** — tap milestones and tasks, saved instantly (works offline)
-- 🎯 **Milestones & progress** — dated timelines and progress bars per project
-- 🌐 **View anywhere** — website (GitHub Pages) or your phone, same app
-- 🤖 **LLM-friendly** — every project is a Markdown note an AI can read and edit
-- 🗂️ **Obsidian vault** — the `projects/` and `inbox/` folders are plain `.md` notes you can open in [Obsidian](https://obsidian.md) on your desktop and track on your phone — same files, two views
+- 🎯 **Milestones, progress bars & trends** — dated timelines, sparklines, an overview dashboard
+- 💵 **Budgets** — categorize spending from a bank CSV against monthly budgets
+- 🤖 **LLM-friendly** — create or edit projects with Claude/ChatGPT, or right in the app
+- 🗂️ **Obsidian vault** — `projects/` and `inbox/` are plain `.md` notes: same files, two views
 - 📦 **Zero dependencies** — plain HTML/CSS/JS, no build step, no backend
+
+---
+
+## 🚀 Get your own copy
+
+This repo is a **template** — everyone runs their own private copy, with their
+own data, on free hosting. To set one up:
+
+1. **Use this template** → click **“Use this template” → Create a new repository**
+   on GitHub (or fork it).
+2. **Turn on hosting** → in your new repo: **Settings → Pages → Source: Deploy
+   from a branch → `main` / `/ (root)` → Save**.
+3. **Open your app** at `https://<your-username>.github.io/<repo>/` and
+   **Add to Home screen**.
+4. *(Optional)* To create/edit projects from your phone, tap **➕ New project →
+   GitHub connection** and paste a fine-grained token (see
+   [From inside the app](#from-inside-the-app)).
+
+**Make it yours:** the app name and tagline come from
+[`data/manifest.json`](data/manifest.json) (`app` and `tagline`). The starter
+ships with one **Example Goal** and a **Monthly Budget** — edit or delete them
+and add your own.
 
 ---
 
