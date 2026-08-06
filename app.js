@@ -185,6 +185,14 @@ function parseHistoryTable(sectionText) {
   }
   return { headers, rows };
 }
+function parseRules(sectionText) {
+  const rules = [];
+  for (const line of (sectionText || '').split(/\r?\n/)) {
+    const m = line.match(/^\s*-\s*(.+?):\s*(.+)$/);
+    if (m) rules.push({ category: m[1].trim(), keywords: m[2].split(',').map((k) => k.trim().toLowerCase()).filter(Boolean) });
+  }
+  return rules;
+}
 function parseProjectMd(text, path) {
   const { props, body } = parseFrontmatter(text);
   const { intro, sections } = splitSections(body);
@@ -201,12 +209,87 @@ function parseProjectMd(text, path) {
     id: props.id || slugify(title),
     title, emoji: props.emoji || '📌', color: props.color || '#7c3aed',
     description: intro, targetDate: props.target || '',
+    budget: /^(true|yes)$/i.test(props.budget || ''),
+    rules: parseRules(sections.rules),
     metrics,
     milestones: parseTasks(sections.milestones).map((t) =>
       ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
     checklist: parseTasks(sections.checklist).map((t) =>
       ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence, done: t.done })),
   };
+}
+// Match a transaction description to a category using the project's rules.
+function categorizeDesc(desc, rules) {
+  const d = String(desc || '').toLowerCase();
+  for (const r of rules) if (r.keywords.some((k) => k && d.includes(k))) return r.category;
+  return null;
+}
+// Sum spending per category from CSV rows using amount + description columns.
+function summarizeByCategory(rows, amountCol, descCol, rules) {
+  const vals = rows.slice(1).map((r) => csvNum(r[amountCol]));
+  const signed = vals.some((n) => !isNaN(n) && n < 0); // signed column vs debit-only
+  const totals = {}; let other = 0;
+  rows.slice(1).forEach((r, i) => {
+    const n = vals[i]; if (isNaN(n)) return;
+    const spend = signed ? (n < 0 ? -n : 0) : (n > 0 ? n : 0);
+    if (spend <= 0) return;
+    const cat = categorizeDesc(r[descCol], rules);
+    if (cat) totals[cat] = round2((totals[cat] || 0) + spend); else other = round2(other + spend);
+  });
+  return { totals, other };
+}
+// Insert or update a row (keyed by its first cell) in a note's ## History table.
+function upsertHistoryRow(raw, rowKey, values) {
+  const lines = raw.split('\n');
+  const h = lines.findIndex((l) => l.trim().toLowerCase() === '## history');
+  if (h === -1) return raw;
+  const tbl = [];
+  for (let i = h + 1; i < lines.length; i++) {
+    const s = lines[i].trim();
+    if (s.startsWith('|')) tbl.push(i);
+    else if (s.startsWith('## ') || (s === '' && tbl.length)) break;
+  }
+  if (tbl.length < 2) return raw;
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const headers = cells(lines[tbl[0]]);
+  const dataIdx = tbl.slice(1).filter((i) => !/^[\s|:\-]+$/.test(lines[i].trim()));
+  const fmt = (v) => String(round2(v));
+  const existing = dataIdx.find((i) => cells(lines[i])[0] === rowKey);
+  if (existing != null) {
+    const c = cells(lines[existing]); while (c.length < headers.length) c.push('');
+    headers.forEach((hd, j) => { if (j && hd in values) c[j] = fmt(values[hd]); });
+    lines[existing] = '| ' + c.join(' | ') + ' |';
+  } else {
+    const row = [rowKey, ...headers.slice(1).map((hd) => (hd in values ? fmt(values[hd]) : ''))];
+    const at = (dataIdx.length ? dataIdx[dataIdx.length - 1] : tbl[tbl.length - 1]) + 1;
+    lines.splice(at, 0, '| ' + row.join(' | ') + ' |');
+  }
+  return lines.join('\n');
+}
+// Most common YYYY-MM among a date-like column, else the current month.
+function detectMonth(rows) {
+  let dateCol = -1;
+  for (let c = 0; c < rows[0].length; c++) if (isDateLikeCol(rows, c)) { dateCol = c; break; }
+  const counts = {};
+  if (dateCol >= 0) for (const r of rows.slice(1)) {
+    const m = String(r[dateCol] || '').match(/(\d{4})[-/.](\d{1,2})/);
+    if (m) { const k = `${m[1]}-${String(+m[2]).padStart(2, '0')}`; counts[k] = (counts[k] || 0) + 1; }
+  }
+  const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  return top || new Date().toISOString().slice(0, 7);
+}
+function autoDetectDescCol(rows) {
+  // the non-date, non-numeric column with the longest average text
+  let best = 0, score = -1;
+  for (let c = 0; c < rows[0].length; c++) {
+    if (isDateLikeCol(rows, c)) continue;
+    const cells = rows.slice(1).map((r) => (r[c] || '').trim());
+    const numeric = cells.filter((x) => !isNaN(csvNum(x)) && x !== '').length;
+    if (numeric > cells.length / 2) continue; // mostly numbers → not description
+    const avg = cells.reduce((a, b) => a + b.length, 0) / (cells.length || 1);
+    if (avg > score) { score = avg; best = c; }
+  }
+  return best;
 }
 
 // Sparkline of a metric's history. Thin line, emphasized endpoint, no axes.
@@ -703,18 +786,27 @@ function renderDetail(p) {
   const color = p.color || '#7c3aed';
   const metrics = (p.metrics || []).map((m) => {
     const pct = metricPct(m);
-    const mom = metricMomentum(m);
+    const over = p.budget && m.current > m.target;
+    const barColor = over ? 'var(--crit)' : color;
+    const mom = p.budget ? null : metricMomentum(m);
     const spark = (m.history && m.history.length > 1)
-      ? `<div class="spark-row">${sparkline(m.history, color)}
+      ? `<div class="spark-row">${sparkline(m.history, over ? 'var(--crit)' : color)}
            ${mom ? `<span class="mom ${mom}">${MOM[mom]} ${mom === 'up' ? 'improving' : mom === 'down' ? 'slipping' : 'flat'}</span>` : ''}
          </div>`
       : '';
+    let status = '';
+    if (p.budget) {
+      const left = round2(m.target - m.current);
+      status = over
+        ? `<span class="over-note">over by ${esc(fmtValue({ current: -left, unit: m.unit }, 'current'))}</span>`
+        : `<span class="left-note">${esc(fmtValue({ current: left, unit: m.unit }, 'current'))} left</span>`;
+    }
     return `<div class="metric">
       <div class="metric-top">
-        <span class="name">${esc(m.label)}</span>
+        <span class="name">${esc(m.label)} ${status}</span>
         <span class="nums"><b>${esc(fmtValue(m, 'current'))}</b> / ${esc(fmtValue(m, 'target'))}</span>
       </div>
-      <div class="bar"><span style="width:${(pct * 100).toFixed(0)}%;background:${esc(color)}"></span></div>
+      <div class="bar"><span style="width:${(pct * 100).toFixed(0)}%;background:${barColor}"></span></div>
       ${spark}
     </div>`;
   }).join('');
@@ -749,7 +841,7 @@ function renderDetail(p) {
       </div>
     </div>
     ${p.targetDate ? `<span class="target-pill">🎯 Target · ${esc(fmtDate(p.targetDate))}</span>` : ''}
-    ${metrics ? `<div class="section-label">Progress</div>${metrics}` : ''}
+    ${metrics ? `<div class="section-label">${p.budget ? 'Budget · spent vs monthly limit' : 'Progress'}</div>${metrics}` : ''}
     ${milestones ? `<div class="section-label">Milestones</div><div class="timeline">${milestones}</div>` : ''}
     ${checklist ? `<div class="section-label">Checklist</div>${checklist}` : ''}
     ${p.path ? `<div class="detail-actions">
@@ -1101,13 +1193,32 @@ function loadCsv(text) {
   if (rows.length < 2) { el('csvHint').textContent = '⚠︎ That CSV looks empty.'; el('csvHint').classList.add('err'); return; }
   csvRows = rows;
   const headers = rows[0].map((h, i) => h.trim() || `Column ${i + 1}`);
-  el('csvAmountCol').innerHTML = headers.map((h, i) => `<option value="${i}">${esc(h)}</option>`).join('');
+  const opts = headers.map((h, i) => `<option value="${i}">${esc(h)}</option>`).join('');
+  el('csvAmountCol').innerHTML = opts;
   el('csvAmountCol').value = String(autoDetectAmountCol(rows));
-  el('csvMetric').innerHTML = (importProject.metrics || []).length
-    ? importProject.metrics.map((m) => `<option value="${esc(m.label)}">${esc(m.label)}</option>`).join('')
-    : '<option value="">(this project has no metrics)</option>';
+  const budget = !!importProject.budget;
+  el('csvDescField').hidden = !budget;
+  el('csvSingleBlock').hidden = budget;
+  el('csvBudgetBlock').hidden = !budget;
+  if (budget) {
+    el('csvDescCol').innerHTML = opts;
+    el('csvDescCol').value = String(autoDetectDescCol(rows));
+    updateBudgetBreakdown();
+  } else {
+    el('csvMetric').innerHTML = (importProject.metrics || []).length
+      ? importProject.metrics.map((m) => `<option value="${esc(m.label)}">${esc(m.label)}</option>`).join('')
+      : '<option value="">(this project has no metrics)</option>';
+    onAmountColChange();
+  }
   el('csvResult').hidden = false;
-  onAmountColChange();
+}
+function renderCsvSummary(col) {
+  const a = analyzeColumn(csvRows, col);
+  el('csvSummary').innerHTML =
+    `<div class="csv-stat"><span>${a.count}</span><label>transactions</label></div>
+     <div class="csv-stat"><span>${fmtMoney(a.out)}</span><label>money out</label></div>
+     <div class="csv-stat"><span>${fmtMoney(a.in)}</span><label>money in</label></div>`;
+  return a;
 }
 // Pick a sensible default figure for the chosen column: money-out when the
 // column is signed (has negatives), otherwise the plain sum (debit-only column).
@@ -1117,15 +1228,39 @@ function onAmountColChange() {
   updateCsvSummary();
 }
 function updateCsvSummary() {
-  const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
-  el('csvSummary').innerHTML =
-    `<div class="csv-stat"><span>${a.count}</span><label>transactions</label></div>
-     <div class="csv-stat"><span>${fmtMoney(a.out)}</span><label>money out</label></div>
-     <div class="csv-stat"><span>${fmtMoney(a.in)}</span><label>money in</label></div>`;
+  const a = renderCsvSummary(+el('csvAmountCol').value);
   const fig = el('csvFigure').value;
   const val = fig === 'count' ? a.count : a[fig];
   const metric = (importProject.metrics || []).find((m) => m.label === el('csvMetric').value);
   el('csvPreview').textContent = metric ? `${metric.label}:  ${metric.current} → ${round2(val)}` : 'No metric to update in this project.';
+}
+// spent-per-category for the current column choices (routes unmatched into "Other")
+function budgetSpend() {
+  const { totals, other } = summarizeByCategory(csvRows, +el('csvAmountCol').value, +el('csvDescCol').value, importProject.rules || []);
+  const perMetric = {};
+  for (const m of importProject.metrics || []) {
+    perMetric[m.label] = round2((totals[m.label] || 0) + (m.label.toLowerCase() === 'other' ? other : 0));
+  }
+  const hasOther = (importProject.metrics || []).some((m) => m.label.toLowerCase() === 'other');
+  return { perMetric, unmatched: hasOther ? 0 : other };
+}
+function updateBudgetBreakdown() {
+  renderCsvSummary(+el('csvAmountCol').value);
+  const month = detectMonth(csvRows);
+  el('csvMonth').textContent = `Month: ${month} · ${csvRows.length - 1} transactions → each category below`;
+  const { perMetric, unmatched } = budgetSpend();
+  const color = importProject.color || '#22c55e';
+  let html = (importProject.metrics || []).map((m) => {
+    const spent = perMetric[m.label] || 0;
+    const over = spent > m.target;
+    const pct = m.target > 0 ? Math.min(spent / m.target, 1) * 100 : (spent > 0 ? 100 : 0);
+    return `<div class="bk-row">
+      <div class="bk-top"><span>${esc(m.label)}</span><span class="bk-nums ${over ? 'over' : ''}">${fmtMoney(spent)} / ${fmtMoney(m.target)}${over ? ' ⚠' : ''}</span></div>
+      <div class="bar"><span style="width:${pct.toFixed(0)}%;background:${over ? 'var(--crit)' : esc(color)}"></span></div>
+    </div>`;
+  }).join('');
+  if (unmatched > 0) html += `<div class="bk-row"><div class="bk-top"><span>Uncategorized</span><span class="bk-nums">${fmtMoney(unmatched)}</span></div><p class="muted small" style="text-align:left;margin:4px 0 0">Add keywords in the note's ## Rules to sort these.</p></div>`;
+  el('csvBreakdown').innerHTML = html || '<p class="muted small">This budget has no categories yet.</p>';
 }
 
 /* ---------- sync snapshot ---------- */
@@ -1225,22 +1360,35 @@ el('csvFile').addEventListener('change', (e) => {
   rd.onerror = () => { el('csvHint').textContent = '⚠︎ Could not read that file.'; el('csvHint').classList.add('err'); };
   rd.readAsText(f);
 });
-el('csvAmountCol').addEventListener('change', onAmountColChange);
+el('csvAmountCol').addEventListener('change', () => (importProject.budget ? updateBudgetBreakdown() : onAmountColChange()));
+el('csvDescCol').addEventListener('change', updateBudgetBreakdown);
 ['csvFigure', 'csvMetric'].forEach((id) => el(id).addEventListener('change', updateCsvSummary));
 el('csvApply').addEventListener('click', async () => {
-  const label = el('csvMetric').value;
-  if (!label) { el('csvHint').textContent = '⚠︎ This project has no metric to update. Add one first (Edit note).'; el('csvHint').classList.add('err'); return; }
-  const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
-  const fig = el('csvFigure').value;
-  const value = fig === 'count' ? a.count : a[fig];
   const btn = el('csvApply');
   btn.disabled = true; el('csvHint').classList.remove('err'); el('csvHint').textContent = 'Applying…';
   try {
     requireToken();
-    const newMd = setMetricCurrentInNote(importProject.raw, label, value);
-    if (!newMd) throw new Error('Couldn’t find that metric line in the note.');
+    let raw = importProject.raw, message;
+    if (importProject.budget) {
+      const { perMetric } = budgetSpend();
+      const month = detectMonth(csvRows);
+      for (const m of importProject.metrics || []) {
+        const updated = setMetricCurrentInNote(raw, m.label, perMetric[m.label] || 0);
+        if (updated) raw = updated;
+      }
+      raw = upsertHistoryRow(raw, month, perMetric);
+      message = `Budget import for ${month}`;
+    } else {
+      const label = el('csvMetric').value;
+      if (!label) throw new Error('This project has no metric to update. Add one first (Edit note).');
+      const a = analyzeColumn(csvRows, +el('csvAmountCol').value);
+      const fig = el('csvFigure').value;
+      const updated = setMetricCurrentInNote(raw, label, fig === 'count' ? a.count : a[fig]);
+      if (!updated) throw new Error('Couldn’t find that metric line in the note.');
+      raw = updated; message = `Import CSV → ${label}`;
+    }
     const cur = await ghGetFile(importProject.path);
-    await ghPutFile(importProject.path, newMd.trim() + '\n', `Import CSV → ${label}`, cur ? cur.sha : undefined);
+    await ghPutFile(importProject.path, raw.trim() + '\n', message, cur ? cur.sha : undefined);
     el('csvHint').textContent = '✓ Updated. Appears after GitHub publishes (~1 min).';
     setTimeout(() => { el('importSheet').hidden = true; }, 2400);
   } catch (e) {

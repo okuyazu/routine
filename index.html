@@ -109,18 +109,27 @@
       <p class="muted">Pick a statement CSV (e.g. exported from K PLUS). It's read <strong>on your phone only</strong> — nothing is uploaded.</p>
       <input id="csvFile" type="file" accept=".csv,text/csv,text/plain" />
       <div id="csvResult" hidden>
-        <label class="field"><span>Amount column</span><select id="csvAmountCol"></select></label>
-        <div class="csv-summary" id="csvSummary"></div>
         <div class="field-row">
-          <label class="field grow"><span>Update metric</span><select id="csvMetric"></select></label>
-          <label class="field grow"><span>With</span><select id="csvFigure">
-            <option value="out">Money out</option>
-            <option value="sum">Total (sum)</option>
-            <option value="in">Money in</option>
-            <option value="count">Transactions</option>
-          </select></label>
+          <label class="field grow"><span>Amount column</span><select id="csvAmountCol"></select></label>
+          <label class="field grow" id="csvDescField" hidden><span>Description column</span><select id="csvDescCol"></select></label>
         </div>
-        <p class="muted small" id="csvPreview" style="text-align:left"></p>
+        <div class="csv-summary" id="csvSummary"></div>
+        <div id="csvSingleBlock">
+          <div class="field-row">
+            <label class="field grow"><span>Update metric</span><select id="csvMetric"></select></label>
+            <label class="field grow"><span>With</span><select id="csvFigure">
+              <option value="out">Money out</option>
+              <option value="sum">Total (sum)</option>
+              <option value="in">Money in</option>
+              <option value="count">Transactions</option>
+            </select></label>
+          </div>
+          <p class="muted small" id="csvPreview" style="text-align:left"></p>
+        </div>
+        <div id="csvBudgetBlock" hidden>
+          <p class="muted small" id="csvMonth" style="text-align:left"></p>
+          <div id="csvBreakdown"></div>
+        </div>
         <div class="sheet-actions">
           <button class="btn primary" id="csvApply">Apply to project</button>
           <button class="btn ghost" id="csvCancel">Cancel</button>

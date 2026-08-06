@@ -165,6 +165,29 @@ transaction count, and lets you apply one of those figures to a project metric.
 Requires the GitHub connection (same token as creating projects), since it saves
 the number into the project note.
 
+### Budget projects (categories + monthly trends)
+
+A project with `budget: true` in its frontmatter becomes a **monthly budget**.
+Its `## Progress` metrics are **categories** (`current` = spent this month,
+`target` = the budget), and a `## Rules` section maps keywords to categories:
+
+```markdown
+## Progress
+- Food: 0 / 0 / 6000 ฿
+- Transport: 0 / 0 / 3000 ฿
+
+## Rules
+- Food: 7-eleven, grocery, restaurant, coffee
+- Transport: grab, taxi, fuel, bts
+```
+
+Importing a statement into a budget project reads each transaction's
+description, sorts spending into categories, fills in **every category at
+once**, flags **over-budget** in red, and appends the month's totals to the
+`## History` table so you get category trends over time. Unmatched spending
+falls into a `Other` category. The starter **Monthly Budget** project ships
+with sensible categories and rules — edit them with **✎ Edit note**.
+
 ## Automatic sync from Garmin (optional)
 
 A scheduled GitHub Action ([`.github/workflows/garmin-sync.yml`](.github/workflows/garmin-sync.yml))
