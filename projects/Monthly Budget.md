@@ -15,7 +15,7 @@ Track monthly spending against category budgets. Open this project → ⭳ Impor
 - Shopping: 0 / 0 / 4000 ฿
 - Bills: 0 / 0 / 6000 ฿
 - Health: 0 / 0 / 2000 ฿
-- Other: 0 / 2649572.71 / 3000 ฿
+- Other: 0 / 0 / 3000 ฿
 
 ## Rules
 - Food: 7-eleven, 7eleven, grocery, restaurant, coffee, starbucks, food, lotus, big c, makro, tops
@@ -28,4 +28,3 @@ Track monthly spending against category budgets. Open this project → ⭳ Impor
 | month | Food | Transport | Shopping | Bills | Health | Other |
 |---|---|---|---|---|---|---|
 | 2026-07 | 0 | 0 | 0 | 0 | 0 | 0 |
-| 2026-05 | 0 | 0 | 0 | 0 | 0 | 2649572.71 |
