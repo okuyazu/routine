@@ -21,7 +21,7 @@ Build the aerobic engine, full-pattern strength-endurance, and compromised (run+
 - [ ] Reassess base block + choose race date 📅 2026-10-30
 
 ## Checklist
-- [ ] 4 strength/functional mornings — 2 home, 1 gym, 1 brick (weekly)
+- [ ] Strength/functional mornings — 2 home, 1 gym, 1 brick (weekly ×4)
 - [ ] Run 35–40 km across easy / interval / long (weekly)
 - [ ] Complete Saturday compromised brick (weekly)
 - [ ] Reclaim curl volume — no isolation curls (weekly)
