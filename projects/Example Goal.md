@@ -19,6 +19,7 @@ This is an example project so you can see how things look. Edit it with ✎ Edit
 - [ ] Goal reached 📅 2026-12-31
 
 ## Checklist
+- [ ] Study sessions (weekly ×3)
 - [ ] Weekly review (weekly)
 - [ ] Monthly check-in (monthly)
 

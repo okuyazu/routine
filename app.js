@@ -34,6 +34,46 @@ function setDone(projId, itemId, val) {
   saveOverlay();
 }
 
+/* ---------- recurring quota counters (weekly/daily/monthly, reset per period) ---------- */
+const COUNT_KEY = 'benchmarks:counts:v1';
+let counts = (() => { try { return JSON.parse(localStorage.getItem(COUNT_KEY)) || {}; } catch { return {}; } })();
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil(((t - ys) / 86400000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
+}
+function periodKey(cadence) {
+  const d = new Date();
+  if (/daily/i.test(cadence)) return d.toISOString().slice(0, 10);
+  if (/monthly/i.test(cadence)) return d.toISOString().slice(0, 7);
+  return isoWeek(d); // weekly (default)
+}
+function isRecurring(cadence) { return /^(daily|weekly|monthly)$/i.test(cadence || ''); }
+function getCount(projId, itemId, cadence) {
+  const e = counts[projId] && counts[projId][itemId];
+  return (e && e.p === periodKey(cadence)) ? e.n : 0;
+}
+function setCount(projId, itemId, cadence, n) {
+  (counts[projId] ||= {})[itemId] = { p: periodKey(cadence), n };
+  try { localStorage.setItem(COUNT_KEY, JSON.stringify(counts)); } catch { /* ignore */ }
+}
+// Effective state of a checklist item: recurring items use the per-period
+// counter; one-time items use the boolean overlay.
+function checklistState(p, c) {
+  const target = c.count || 1;
+  if (isRecurring(c.cadence)) {
+    const raw = getCount(p.id, c.id, c.cadence);
+    return { raw, n: Math.min(raw, target), target, done: raw >= target, recurring: true };
+  }
+  const d = isDone(p.id, c.id, c.done);
+  return { raw: d ? target : 0, n: d ? target : 0, target, done: d, recurring: false };
+}
+function checklistDone(p, c) { return checklistState(p, c).done; }
+function checklistFraction(p, c) { const s = checklistState(p, c); return s.target ? s.n / s.target : 0; }
+
 /* ---------- locally captured ideas (this device, not yet in the repo) ---------- */
 const CAPTURE_KEY = 'benchmarks:captures:v1';
 let CAPTURES = loadCaptures();
@@ -141,12 +181,18 @@ function parseTasks(sectionText) {
     const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
     if (!m) continue;
     let title = m[2].trim();
-    let target = null, cadence = null;
+    let target = null, cadence = null, count = 1;
     const dm = title.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
     if (dm) { target = dm[1]; title = title.replace(dm[0], '').trim(); }
     const cm = title.match(/\(([^)]+)\)\s*$/);
-    if (cm) { cadence = cm[1].trim(); title = title.slice(0, cm.index).trim(); }
-    items.push({ title, done: m[1].toLowerCase() === 'x', target, cadence });
+    if (cm) {
+      let c = cm[1].trim();
+      const xm = c.match(/[×x]\s*(\d+)/i) || c.match(/(\d+)\s*[×x]/i); // ×3 / x3 / 3×
+      if (xm) { count = Math.max(1, parseInt(xm[1], 10) || 1); c = c.replace(xm[0], '').replace(/[,\s]+$/, '').trim(); }
+      cadence = c || null;
+      title = title.slice(0, cm.index).trim();
+    }
+    items.push({ title, done: m[1].toLowerCase() === 'x', target, cadence, count });
   }
   return items;
 }
@@ -215,7 +261,7 @@ function parseProjectMd(text, path) {
     milestones: parseTasks(sections.milestones).map((t) =>
       ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
     checklist: parseTasks(sections.checklist).map((t) =>
-      ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence, done: t.done })),
+      ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence || (t.count > 1 ? 'weekly' : null), done: t.done, count: t.count })),
   };
 }
 // Match a transaction description to a category using the project's rules.
@@ -384,8 +430,7 @@ function projectProgress(p) {
     parts.push(d / p.milestones.length);
   }
   if (p.checklist?.length) {
-    const d = p.checklist.filter((c) => isDone(p.id, c.id, c.done)).length;
-    parts.push(d / p.checklist.length);
+    parts.push(p.checklist.reduce((s, c) => s + checklistFraction(p, c), 0) / p.checklist.length);
   }
   if (p.metrics?.length) {
     parts.push(p.metrics.reduce((s, m) => s + metricPct(m), 0) / p.metrics.length);
@@ -483,7 +528,7 @@ function computeDashboard() {
         }
       }
     }
-    for (const c of p.checklist || []) { chTot++; if (isDone(p.id, c.id, c.done)) chDone++; }
+    for (const c of p.checklist || []) { chTot++; if (checklistDone(p, c)) chDone++; }
   }
   overdue.sort((a, b) => a.d - b.d);
   upcoming.sort((a, b) => a.d - b.d);
@@ -567,7 +612,7 @@ function renderHome() {
     const pct = projectProgress(p);
     const msDone = (p.milestones || []).filter((m) => isDone(p.id, m.id, m.done)).length;
     const msTot = (p.milestones || []).length;
-    const chDone = (p.checklist || []).filter((c) => isDone(p.id, c.id, c.done)).length;
+    const chDone = (p.checklist || []).filter((c) => checklistDone(p, c)).length;
     const chTot = (p.checklist || []).length;
     return `<div class="pcard" data-go="${esc(p.id)}">
       <span class="accent-bar" style="background:${esc(p.color || '#7c3aed')}"></span>
@@ -835,10 +880,12 @@ function renderDetail(p) {
   }).join('');
 
   const checklist = (p.checklist || []).map((c) => {
-    const done = isDone(p.id, c.id, c.done);
-    return `<div class="check ${done ? 'on' : ''}" data-check="${esc(c.id)}">
-      <div class="box" style="${done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
+    const st = checklistState(p, c);
+    const showCount = st.recurring && st.target > 1;
+    return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
+      <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
+      ${showCount ? `<span class="count-pill ${st.done ? 'on' : ''}">${st.n}/${st.target}</span>` : ''}
       ${c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : ''}
     </div>`;
   }).join('');
@@ -864,14 +911,24 @@ function renderDetail(p) {
   // wire up toggles
   view.querySelectorAll('[data-check]').forEach((node) => {
     node.addEventListener('click', () => {
-      const id = node.dataset.check;
-      const item = p.checklist.find((c) => c.id === id);
-      const next = !isDone(p.id, id, item.done);
-      setDone(p.id, id, next);
-      node.classList.toggle('on', next);
+      const c = p.checklist.find((x) => x.id === node.dataset.check);
+      const target = c.count || 1;
+      let done;
+      if (isRecurring(c.cadence)) {
+        let n = getCount(p.id, c.id, c.cadence);
+        n = n + 1 > target ? 0 : n + 1;       // tap to add; wraps back to 0 at full
+        setCount(p.id, c.id, c.cadence, n);
+        done = n >= target;
+        const pill = node.querySelector('.count-pill');
+        if (pill) { pill.textContent = `${Math.min(n, target)}/${target}`; pill.classList.toggle('on', done); }
+      } else {
+        done = !isDone(p.id, c.id, c.done);
+        setDone(p.id, c.id, done);
+      }
+      node.classList.toggle('on', done);
       const box = node.querySelector('.box');
-      box.style.background = next ? color : '';
-      box.style.borderColor = next ? color : '';
+      box.style.background = done ? color : '';
+      box.style.borderColor = done ? color : '';
     });
   });
   view.querySelectorAll('[data-ms]').forEach((node) => {
@@ -1070,7 +1127,7 @@ function parseLoose(md) {
     description: intro.replace(/^#\s+.+\n?/, '').trim(),
     metrics: parseMetrics(sections.progress),
     milestones: parseTasks(sections.milestones).map((t) => ({ title: t.title, target: t.target, done: t.done })),
-    checklist: parseTasks(sections.checklist).map((t) => ({ title: t.title, cadence: t.cadence, done: t.done })),
+    checklist: parseTasks(sections.checklist).map((t) => ({ title: t.title, cadence: t.cadence || (t.count > 1 ? 'weekly' : null), done: t.done, count: t.count })),
   };
 }
 // Re-serialize a project object into a clean, canonical note so the stored file
@@ -1087,7 +1144,11 @@ function serializeNote(p) {
   if (p.milestones.length) out.push('## Milestones',
     ...p.milestones.map((m) => `- [${m.done ? 'x' : ' '}] ${m.title}${m.target ? ` 📅 ${m.target}` : ''}`), '');
   if (p.checklist.length) out.push('## Checklist',
-    ...p.checklist.map((c) => `- [${c.done ? 'x' : ' '}] ${c.title}${c.cadence ? ` (${c.cadence})` : ''}`), '');
+    ...p.checklist.map((c) => {
+      const n = c.count > 1 ? ` ×${c.count}` : '';
+      const suffix = c.cadence ? ` (${c.cadence}${n})` : (n ? ` (weekly${n})` : '');
+      return `- [${c.done ? 'x' : ' '}] ${c.title}${suffix}`;
+    }), '');
   if (p.metrics.length) {
     const today = new Date().toISOString().slice(0, 10);
     out.push('## History', `| date | ${p.metrics.map((m) => m.label).join(' | ')} |`,
