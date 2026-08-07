@@ -248,6 +248,13 @@ a { color: var(--accent-2); }
   border-radius: 10px; padding: 11px 12px; font-size: 15px; font-family: inherit;
 }
 #csvFile { width: 100%; margin-top: 8px; color: var(--muted); font-size: 13px; }
+#csvWarn.err { color: var(--crit); font-weight: 600; }
+.csv-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin: 4px 0 2px; }
+.csv-table table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.csv-table th, .csv-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; color: var(--muted); }
+.csv-table th { color: var(--text); font-weight: 600; position: sticky; top: 0; background: var(--bg-elev); }
+.csv-table td.c-amt, .csv-table th.c-amt { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
+.csv-table td.c-desc, .csv-table th.c-desc { background: color-mix(in srgb, var(--accent-2) 18%, transparent); color: var(--text); }
 .csv-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 4px; }
 .csv-stat { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 8px; text-align: center; }
 .csv-stat span { display: block; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }

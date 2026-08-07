@@ -228,15 +228,16 @@ function categorizeDesc(desc, rules) {
 function summarizeByCategory(rows, amountCol, descCol, rules) {
   const vals = rows.slice(1).map((r) => csvNum(r[amountCol]));
   const signed = vals.some((n) => !isNaN(n) && n < 0); // signed column vs debit-only
-  const totals = {}; let other = 0;
+  const totals = {}; let other = 0, spendCount = 0, matched = 0;
   rows.slice(1).forEach((r, i) => {
     const n = vals[i]; if (isNaN(n)) return;
     const spend = signed ? (n < 0 ? -n : 0) : (n > 0 ? n : 0);
     if (spend <= 0) return;
+    spendCount++;
     const cat = categorizeDesc(r[descCol], rules);
-    if (cat) totals[cat] = round2((totals[cat] || 0) + spend); else other = round2(other + spend);
+    if (cat) { totals[cat] = round2((totals[cat] || 0) + spend); matched++; } else other = round2(other + spend);
   });
-  return { totals, other };
+  return { totals, other, spendCount, matched };
 }
 // Insert or update a row (keyed by its first cell) in a note's ## History table.
 function upsertHistoryRow(raw, rowKey, values) {
@@ -1144,6 +1145,19 @@ function parseCSV(text, delim) {
   if (f.length || row.length) { row.push(f); rows.push(row); }
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
+// Drop bank preamble rows (account info, blank lines) before the real table:
+// the header is the first row at the table's most-common column width whose
+// next row matches it too.
+function stripPreamble(rows) {
+  if (rows.length < 3) return rows;
+  const len = {};
+  rows.forEach((r) => { len[r.length] = (len[r.length] || 0) + 1; });
+  const width = +Object.keys(len).sort((a, b) => len[b] - len[a] || (+b) - (+a))[0];
+  for (let i = 0; i < rows.length - 1; i++) {
+    if (rows[i].length === width && rows[i + 1].length === width) return rows.slice(i);
+  }
+  return rows;
+}
 // Parse a money cell: handles "1,234.56", "-1,234", "(1,234)", "฿1,234", "1234-".
 function csvNum(s) {
   if (s == null) return NaN;
@@ -1199,7 +1213,7 @@ function openImportSheet(p) {
   el('importSheet').hidden = false;
 }
 function loadCsv(text) {
-  const rows = parseCSV(text, detectDelimiter(text));
+  const rows = stripPreamble(parseCSV(text, detectDelimiter(text)));
   if (rows.length < 2) { el('csvHint').textContent = '⚠︎ That CSV looks empty.'; el('csvHint').classList.add('err'); return; }
   csvRows = rows;
   const headers = rows[0].map((h, i) => h.trim() || `Column ${i + 1}`);
@@ -1213,14 +1227,13 @@ function loadCsv(text) {
   if (budget) {
     el('csvDescCol').innerHTML = opts;
     el('csvDescCol').value = String(autoDetectDescCol(rows));
-    updateBudgetBreakdown();
   } else {
     el('csvMetric').innerHTML = (importProject.metrics || []).length
       ? importProject.metrics.map((m) => `<option value="${esc(m.label)}">${esc(m.label)}</option>`).join('')
       : '<option value="">(this project has no metrics)</option>';
-    onAmountColChange();
   }
   el('csvResult').hidden = false;
+  refreshCsvView();
 }
 function renderCsvSummary(col) {
   const a = analyzeColumn(csvRows, col);
@@ -1229,6 +1242,31 @@ function renderCsvSummary(col) {
      <div class="csv-stat"><span>${fmtMoney(a.out)}</span><label>money out</label></div>
      <div class="csv-stat"><span>${fmtMoney(a.in)}</span><label>money in</label></div>`;
   return a;
+}
+// Preview the first rows so the user can see what's being read; highlight the
+// chosen amount (and description) columns.
+function renderCsvPreview() {
+  const amt = +el('csvAmountCol').value;
+  const desc = importProject.budget ? +el('csvDescCol').value : -1;
+  const cls = (i) => `${i === amt ? 'c-amt' : ''}${i === desc ? ' c-desc' : ''}`;
+  const cols = csvRows[0].map((_, i) => i);
+  const head = cols.map((i) => `<th class="${cls(i)}">${esc(csvRows[0][i] || '')}</th>`).join('');
+  const body = csvRows.slice(1, 6).map((r) =>
+    `<tr>${cols.map((i) => `<td class="${cls(i)}">${esc(r[i] || '')}</td>`).join('')}</tr>`).join('');
+  el('csvPreviewTable').innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function csvWarnCheck() {
+  const name = csvRows[0][+el('csvAmountCol').value] || '';
+  const bad = /balance|remaining|\bbal\b/i.test(name);
+  el('csvWarn').textContent = bad
+    ? `⚠︎ “${name}” looks like a balance column, not spending — pick your Withdrawal / Debit column instead.`
+    : '';
+  el('csvWarn').classList.toggle('err', bad);
+}
+function refreshCsvView() {
+  renderCsvPreview();
+  csvWarnCheck();
+  if (importProject.budget) updateBudgetBreakdown(); else onAmountColChange();
 }
 // Pick a sensible default figure for the chosen column: money-out when the
 // column is signed (has negatives), otherwise the plain sum (debit-only column).
@@ -1246,19 +1284,21 @@ function updateCsvSummary() {
 }
 // spent-per-category for the current column choices (routes unmatched into "Other")
 function budgetSpend() {
-  const { totals, other } = summarizeByCategory(csvRows, +el('csvAmountCol').value, +el('csvDescCol').value, importProject.rules || []);
+  const s = summarizeByCategory(csvRows, +el('csvAmountCol').value, +el('csvDescCol').value, importProject.rules || []);
   const perMetric = {};
   for (const m of importProject.metrics || []) {
-    perMetric[m.label] = round2((totals[m.label] || 0) + (m.label.toLowerCase() === 'other' ? other : 0));
+    perMetric[m.label] = round2((s.totals[m.label] || 0) + (m.label.toLowerCase() === 'other' ? s.other : 0));
   }
   const hasOther = (importProject.metrics || []).some((m) => m.label.toLowerCase() === 'other');
-  return { perMetric, unmatched: hasOther ? 0 : other };
+  return { perMetric, unmatched: hasOther ? 0 : s.other, spendCount: s.spendCount, matched: s.matched };
 }
 function updateBudgetBreakdown() {
   renderCsvSummary(+el('csvAmountCol').value);
   const month = detectMonth(csvRows);
-  el('csvMonth').textContent = `Month: ${month} · ${csvRows.length - 1} transactions → each category below`;
-  const { perMetric, unmatched } = budgetSpend();
+  const bs = budgetSpend();
+  const uncat = bs.spendCount - bs.matched;
+  el('csvMonth').textContent = `Month: ${month} · ${bs.spendCount} spending rows · ${uncat} uncategorized`;
+  const { perMetric, unmatched } = bs;
   const color = importProject.color || '#22c55e';
   let html = (importProject.metrics || []).map((m) => {
     const spent = perMetric[m.label] || 0;
@@ -1370,8 +1410,8 @@ el('csvFile').addEventListener('change', (e) => {
   rd.onerror = () => { el('csvHint').textContent = '⚠︎ Could not read that file.'; el('csvHint').classList.add('err'); };
   rd.readAsText(f);
 });
-el('csvAmountCol').addEventListener('change', () => (importProject.budget ? updateBudgetBreakdown() : onAmountColChange()));
-el('csvDescCol').addEventListener('change', updateBudgetBreakdown);
+el('csvAmountCol').addEventListener('change', refreshCsvView);
+el('csvDescCol').addEventListener('change', () => { renderCsvPreview(); updateBudgetBreakdown(); });
 ['csvFigure', 'csvMetric'].forEach((id) => el(id).addEventListener('change', updateCsvSummary));
 el('csvApply').addEventListener('click', async () => {
   const btn = el('csvApply');
