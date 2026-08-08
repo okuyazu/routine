@@ -141,6 +141,23 @@
     </div>
   </div>
 
+  <!-- Log-amount sheet (weekly sum quotas) -->
+  <div class="sheet-backdrop" id="quotaSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="quotaTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="quotaTitle">Log</h2>
+      <p class="muted" id="quotaSub"></p>
+      <div class="field-row">
+        <input id="quotaAmount" class="field grow" type="number" inputmode="decimal" step="any" placeholder="Add amount" />
+        <button class="btn primary" id="quotaAdd" style="flex:none;width:auto;padding:0 20px">Add</button>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="quotaReset">Reset this week</button>
+        <button class="btn ghost" id="quotaClose">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit-note sheet -->
   <div class="sheet-backdrop" id="editSheet" hidden>
     <div class="sheet form-sheet" role="dialog" aria-modal="true" aria-labelledby="editSheetTitle">

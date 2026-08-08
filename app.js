@@ -181,18 +181,28 @@ function parseTasks(sectionText) {
     const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
     if (!m) continue;
     let title = m[2].trim();
-    let target = null, cadence = null, count = 1;
+    let target = null, cadence = null, count = 1, mode = 'count', unit = null;
     const dm = title.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
     if (dm) { target = dm[1]; title = title.replace(dm[0], '').trim(); }
     const cm = title.match(/\(([^)]+)\)\s*$/);
     if (cm) {
       let c = cm[1].trim();
-      const xm = c.match(/[×x]\s*(\d+)/i) || c.match(/(\d+)\s*[×x]/i); // ×3 / x3 / 3×
-      if (xm) { count = Math.max(1, parseInt(xm[1], 10) || 1); c = c.replace(xm[0], '').replace(/[,\s]+$/, '').trim(); }
+      const xm = c.match(/[×x]\s*(\d+(?:\.\d+)?)/i) || c.match(/(\d+(?:\.\d+)?)\s*[×x]/i); // ×3 / x3 / 3×
+      if (xm) {
+        count = Math.max(1, parseFloat(xm[1]) || 1); mode = 'count';
+        c = c.replace(xm[0], '').replace(/[,\s]+$/, '').trim();
+      } else {
+        const sm = c.match(/\+?\s*(\d+(?:\.\d+)?)\s*([A-Za-z฿$%°µ]+)?/); // "40 km" (sum) or bare "3" (count)
+        if (sm && sm[1]) {
+          const num = parseFloat(sm[1]), u = (sm[2] || '').trim();
+          if (u) { count = num; mode = 'sum'; unit = u; } else { count = Math.max(1, num); mode = 'count'; }
+          c = c.replace(sm[0], '').replace(/[,\s]+$/, '').trim();
+        }
+      }
       cadence = c || null;
       title = title.slice(0, cm.index).trim();
     }
-    items.push({ title, done: m[1].toLowerCase() === 'x', target, cadence, count });
+    items.push({ title, done: m[1].toLowerCase() === 'x', target, cadence, count, mode, unit });
   }
   return items;
 }
@@ -261,7 +271,7 @@ function parseProjectMd(text, path) {
     milestones: parseTasks(sections.milestones).map((t) =>
       ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
     checklist: parseTasks(sections.checklist).map((t) =>
-      ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence || (t.count > 1 ? 'weekly' : null), done: t.done, count: t.count })),
+      ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence || ((t.count > 1 || t.mode === 'sum') ? 'weekly' : null), done: t.done, count: t.count, mode: t.mode, unit: t.unit })),
   };
 }
 // Match a transaction description to a category using the project's rules.
@@ -881,11 +891,12 @@ function renderDetail(p) {
 
   const checklist = (p.checklist || []).map((c) => {
     const st = checklistState(p, c);
-    const showCount = st.recurring && st.target > 1;
+    const showPill = st.recurring && (c.mode === 'sum' || st.target > 1);
+    const pillText = `${round2(st.n)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}`;
     return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
-      ${showCount ? `<span class="count-pill ${st.done ? 'on' : ''}">${st.n}/${st.target}</span>` : ''}
+      ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''}">${pillText}</span>` : ''}
       ${c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : ''}
     </div>`;
   }).join('');
@@ -913,6 +924,7 @@ function renderDetail(p) {
     node.addEventListener('click', () => {
       const c = p.checklist.find((x) => x.id === node.dataset.check);
       const target = c.count || 1;
+      if (c.mode === 'sum' && isRecurring(c.cadence)) { openQuota(p, c, node); return; }
       let done;
       if (isRecurring(c.cadence)) {
         let n = getCount(p.id, c.id, c.cadence);
@@ -1127,7 +1139,7 @@ function parseLoose(md) {
     description: intro.replace(/^#\s+.+\n?/, '').trim(),
     metrics: parseMetrics(sections.progress),
     milestones: parseTasks(sections.milestones).map((t) => ({ title: t.title, target: t.target, done: t.done })),
-    checklist: parseTasks(sections.checklist).map((t) => ({ title: t.title, cadence: t.cadence || (t.count > 1 ? 'weekly' : null), done: t.done, count: t.count })),
+    checklist: parseTasks(sections.checklist).map((t) => ({ title: t.title, cadence: t.cadence || ((t.count > 1 || t.mode === 'sum') ? 'weekly' : null), done: t.done, count: t.count, mode: t.mode, unit: t.unit })),
   };
 }
 // Re-serialize a project object into a clean, canonical note so the stored file
@@ -1145,9 +1157,10 @@ function serializeNote(p) {
     ...p.milestones.map((m) => `- [${m.done ? 'x' : ' '}] ${m.title}${m.target ? ` 📅 ${m.target}` : ''}`), '');
   if (p.checklist.length) out.push('## Checklist',
     ...p.checklist.map((c) => {
-      const n = c.count > 1 ? ` ×${c.count}` : '';
-      const suffix = c.cadence ? ` (${c.cadence}${n})` : (n ? ` (weekly${n})` : '');
-      return `- [${c.done ? 'x' : ' '}] ${c.title}${suffix}`;
+      let inner = c.cadence || '';
+      if (c.mode === 'sum') inner = `${inner ? inner + ' ' : ''}${c.count}${c.unit ? ' ' + c.unit : ''}`;
+      else if (c.count > 1) inner = `${inner ? inner + ' ' : ''}×${c.count}`;
+      return `- [${c.done ? 'x' : ' '}] ${c.title}${inner ? ` (${inner})` : ''}`;
     }), '');
   if (p.metrics.length) {
     const today = new Date().toISOString().slice(0, 10);
@@ -1507,6 +1520,40 @@ el('csvApply').addEventListener('click', async () => {
     else { el('csvHint').textContent = '⚠︎ ' + e.message; el('csvHint').classList.add('err'); }
   } finally { btn.disabled = false; }
 });
+
+// Log-amount sheet (weekly sum quotas)
+let quotaCtx = null;
+function openQuota(p, c, node) {
+  quotaCtx = { p, c, node };
+  el('quotaTitle').textContent = c.title;
+  el('quotaAmount').value = '';
+  quotaRefresh();
+  el('quotaSheet').hidden = false;
+  el('quotaAmount').focus();
+}
+function quotaRefresh() {
+  const { p, c, node } = quotaCtx;
+  const st = checklistState(p, c);
+  const noun = /daily/i.test(c.cadence) ? 'day' : /monthly/i.test(c.cadence) ? 'month' : 'week';
+  el('quotaSub').textContent = `${round2(st.n)} / ${st.target} ${c.unit || ''} this ${noun}`.replace(/\s+/g, ' ');
+  const color = p.color || '#7c3aed';
+  node.classList.toggle('on', st.done);
+  const box = node.querySelector('.box'); box.style.background = st.done ? color : ''; box.style.borderColor = st.done ? color : '';
+  const pill = node.querySelector('.count-pill');
+  if (pill) { pill.textContent = `${round2(st.n)}/${st.target}${c.unit ? ' ' + c.unit : ''}`; pill.classList.toggle('on', st.done); }
+}
+el('quotaAdd').addEventListener('click', () => {
+  if (!quotaCtx) return;
+  const { p, c } = quotaCtx;
+  const amt = parseFloat(el('quotaAmount').value);
+  if (isNaN(amt)) return;
+  setCount(p.id, c.id, c.cadence, round2(getCount(p.id, c.id, c.cadence) + amt));
+  el('quotaAmount').value = '';
+  quotaRefresh();
+});
+el('quotaReset').addEventListener('click', () => { if (quotaCtx) { const { p, c } = quotaCtx; setCount(p.id, c.id, c.cadence, 0); quotaRefresh(); } });
+el('quotaClose').addEventListener('click', () => { el('quotaSheet').hidden = true; });
+el('quotaSheet').addEventListener('click', (e) => { if (e.target === el('quotaSheet')) el('quotaSheet').hidden = true; });
 
 // Edit-note sheet
 el('editCancel').addEventListener('click', () => { el('editSheet').hidden = true; });

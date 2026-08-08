@@ -22,7 +22,7 @@ Build the aerobic engine, full-pattern strength-endurance, and compromised (run+
 
 ## Checklist
 - [ ] Strength/functional mornings — 2 home, 1 gym, 1 brick (weekly ×4)
-- [ ] Run 35–40 km across easy / interval / long (weekly)
+- [ ] Running distance — easy / interval / long (weekly 40 km)
 - [ ] Complete Saturday compromised brick (weekly)
 - [ ] Reclaim curl volume — no isolation curls (weekly)
 - [ ] Log sessions in Obsidian/Dataview (weekly)

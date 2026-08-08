@@ -115,7 +115,7 @@ note for you; it shows up after GitHub republishes (~1 min).
 | **Description** | The text right after the frontmatter, before the first `##`. |
 | `## Progress` | One line per metric: `- Label: start / current / target unit`. Smaller-is-better (debt, run time) just works — put the bigger number as `start`. `$` as the unit renders as currency. |
 | `## Milestones` | Task lines `- [ ] Title 📅 YYYY-MM-DD`. `- [x]` = done. Shown as a dated timeline. |
-| `## Checklist` | Task lines `- [ ] Title (cadence)`, cadence being daily/weekly/monthly/once. Add a **weekly quota** with `×N`: `- [ ] Runs (weekly ×3)` shows **n/3**, you tap it each time you do one, and it **resets every week** (no fixed day). Works with `daily ×N` and `monthly ×N` too. Recurring items track per-period on your device. |
+| `## Checklist` | Task lines `- [ ] Title (cadence)`, cadence being daily/weekly/monthly/once. Add a **weekly quota** two ways, and it **resets every week** (no fixed day): a **count** with `×N` — `- [ ] Runs (weekly ×3)` shows **n/3**, tap once per run; or a **sum** with a number + unit — `- [ ] Running (weekly 40 km)` shows **n/40 km**, tap to log each distance (6, 8, 10…) and it adds up. Works with `daily`/`monthly` too. Recurring items track per-period on your device. |
 
 Checkbox state (`- [ ]` vs `- [x]`) is the committed value; your local taps
 override it until you sync. Overall project % averages your milestone,

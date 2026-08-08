@@ -20,6 +20,7 @@ This is an example project so you can see how things look. Edit it with ✎ Edit
 
 ## Checklist
 - [ ] Study sessions (weekly ×3)
+- [ ] Pages read (weekly 100 pages)
 - [ ] Weekly review (weekly)
 - [ ] Monthly check-in (monthly)
 
