@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f17" />
+  <title>Money</title>
+  <link rel="icon" href="../icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1 id="appTitle">Money</h1>
+      <p id="appSub">Accounts · spending · budget</p>
+    </div>
+    <a class="link-btn" href="../">← Benchmarks</a>
+    <button class="link-btn" id="connBtn" title="GitHub connection">⚙</button>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <button class="fab" id="addBtn" aria-label="Add transaction">＋</button>
+
+  <nav class="tabbar">
+    <button data-tab="overview" class="on"><span class="ic">📊</span>Overview</button>
+    <button data-tab="tx"><span class="ic">🧾</span>Transactions</button>
+    <button data-tab="budget"><span class="ic">💵</span>Budget</button>
+  </nav>
+
+  <!-- Add transaction -->
+  <div class="sheet-backdrop" id="txSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-handle"></div>
+      <h2>Add transaction</h2>
+      <div class="seg" id="txKind" style="margin-top:4px">
+        <button class="exp on" data-kind="expense">Expense</button>
+        <button class="inc" data-kind="income">Income</button>
+      </div>
+      <div class="field-row">
+        <label class="field" style="flex:1"><span>Date</span><input id="txDate" type="date" /></label>
+        <label class="field" style="width:120px;flex:none"><span>Amount</span><input id="txAmount" type="number" inputmode="decimal" step="any" placeholder="0" /></label>
+      </div>
+      <label class="field"><span>Description</span><input id="txDesc" type="text" placeholder="e.g. Lotus groceries" /></label>
+      <div class="field-row">
+        <label class="field" style="flex:1"><span>Category</span><select id="txCategory"></select></label>
+        <label class="field" style="flex:1"><span>Account</span><select id="txAccount"></select></label>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn primary" id="txSave">Add</button>
+        <button class="btn ghost" id="txCancel">Cancel</button>
+      </div>
+      <p class="muted small hint" id="txHint"></p>
+    </div>
+  </div>
+
+  <!-- CSV import -->
+  <div class="sheet-backdrop" id="csvSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-handle"></div>
+      <h2>Import statement (CSV)</h2>
+      <p class="muted">Read on your phone only — nothing is uploaded. Rows become transactions in this month's ledger.</p>
+      <input id="csvFile" type="file" accept=".csv,text/csv,text/plain" style="margin-top:8px" />
+      <div id="csvResult" hidden>
+        <div class="field-row">
+          <label class="field" style="flex:1"><span>Amount</span><select id="csvAmount"></select></label>
+          <label class="field" style="flex:1"><span>Description</span><select id="csvDesc"></select></label>
+        </div>
+        <div class="field-row">
+          <label class="field" style="flex:1"><span>These amounts are</span><select id="csvSign">
+            <option value="auto">Auto-detect</option>
+            <option value="debit">All expenses</option>
+            <option value="signed">Signed (+in / −out)</option>
+          </select></label>
+          <label class="field" style="flex:1"><span>Into account</span><select id="csvAccount"></select></label>
+        </div>
+        <p class="muted small" id="csvSummary" style="text-align:left"></p>
+        <div class="csv-table" id="csvPreview"></div>
+        <div class="sheet-actions">
+          <button class="btn primary" id="csvApply">Add transactions</button>
+          <button class="btn ghost" id="csvCancel">Cancel</button>
+        </div>
+      </div>
+      <p class="muted small hint" id="csvHint"></p>
+    </div>
+  </div>
+
+  <!-- GitHub connection -->
+  <div class="sheet-backdrop" id="tokenSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-handle"></div>
+      <h2>Connect GitHub</h2>
+      <p class="muted">Saving accounts and transactions writes to your repo. Paste a fine-grained token
+        (Contents: Read and write, this repo only). Stored only on this device; shared with the Benchmarks app.</p>
+      <input id="tkInput" type="password" placeholder="github_pat_…" spellcheck="false" autocomplete="off" />
+      <div class="sheet-actions">
+        <button class="btn primary" id="tkSave">Save token</button>
+        <button class="btn ghost" id="tkClear">Remove</button>
+      </div>
+      <p class="muted small hint" id="tkHint"></p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v14';
+const VERSION = 'v15';
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
 
@@ -48,7 +48,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
 
   // Data & note files: network-first, fall back to cache (so you can view offline).
-  if (url.pathname.includes('/data/') || url.pathname.includes('/projects/') || url.pathname.includes('/inbox/')) {
+  if (url.pathname.includes('/data/') || url.pathname.includes('/projects/') || url.pathname.includes('/inbox/') || url.pathname.includes('/money/')) {
     e.respondWith(
       fetch(e.request)
         .then((res) => {
