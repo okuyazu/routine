@@ -75,38 +75,65 @@ function categorize(desc, rules) {
 }
 
 /* ---------- state ---------- */
-let ACCOUNTS = [], CATS = [], RULES = [], TX = [];
+let ACCOUNTS = [], CATS = [], RULES = [], LEDGERS = {}, MONTHS = [];
 let TAB = 'overview';
-const MONTH = new Date().toISOString().slice(0, 7);
-const monthLabel = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+const CUR_MONTH = new Date().toISOString().slice(0, 7);
+let selMonth = CUR_MONTH;
 const bust = () => `?t=${Date.now()}`;
+const monthName = (m) => { const [y, mo] = m.split('-'); return new Date(+y, +mo - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); };
+const parseLedger = (md) => parseTable(md).rows
+  .map((r) => ({ date: r.date, description: r.description, amount: +r.amount || 0, category: r.category, account: r.account }))
+  .filter((t) => t.date);
 
 async function load() {
-  const [acc, bud, led] = await Promise.all([
+  const [acc, bud] = await Promise.all([
     fetch(`../money/accounts.md${bust()}`).then((r) => r.ok ? r.text() : '').catch(() => ''),
     fetch(`../money/budget.md${bust()}`).then((r) => r.ok ? r.text() : '').catch(() => ''),
-    fetch(`../money/${MONTH}.md${bust()}`).then((r) => r.ok ? r.text() : '').catch(() => ''),
   ]);
   ACCOUNTS = parseTable(acc).rows.map((r) => ({ name: r.account, type: r.type, balance: +r.balance || 0 }));
   CATS = parseTable(bud).rows.map((r) => ({ category: r.category, monthly: +r.monthly || 0 }));
   RULES = parseRules(bud);
-  TX = parseTable(led).rows.map((r) => ({ date: r.date, description: r.description, amount: +r.amount || 0, category: r.category, account: r.account }))
-    .filter((t) => t.date);
+  const idx = await fetch(`../money/index.json${bust()}`).then((r) => r.ok ? r.json() : null).catch(() => null);
+  let cand = (idx && Array.isArray(idx.months)) ? idx.months.slice() : [];
+  if (!cand.includes(CUR_MONTH)) cand.push(CUR_MONTH); // always try the current month
+  cand = [...new Set(cand)].sort();
+  const texts = await Promise.all(cand.map((m) => fetch(`../money/${m}.md${bust()}`).then((r) => r.ok ? r.text() : null).catch(() => null)));
+  LEDGERS = {};
+  cand.forEach((m, i) => { if (texts[i] && /\|\s*date\s*\|/i.test(texts[i])) LEDGERS[m] = parseLedger(texts[i]); });
+  MONTHS = Object.keys(LEDGERS).sort();
+  if (!MONTHS.includes(selMonth)) selMonth = MONTHS[MONTHS.length - 1] || CUR_MONTH;
 }
-
-function monthStats() {
+async function writeIndex() {
+  const path = 'money/index.json';
+  const cur = await ghGetFile(path);
+  await ghPutFile(path, JSON.stringify({ months: MONTHS }, null, 2) + '\n', 'Update money index', cur ? cur.sha : undefined);
+}
+const txOf = (m) => LEDGERS[m] || [];
+function monthStats(m) {
   let income = 0, expense = 0; const byCat = {};
-  for (const t of TX) {
+  for (const t of txOf(m)) {
     if (t.amount >= 0) income += t.amount;
     else { expense += -t.amount; byCat[t.category] = round2((byCat[t.category] || 0) + -t.amount); }
   }
   return { income: round2(income), expense: round2(expense), net: round2(income - expense), byCat };
 }
+function monthSwitcher() {
+  const i = MONTHS.indexOf(selMonth);
+  const prev = i > 0 ? MONTHS[i - 1] : '';
+  const next = i >= 0 && i < MONTHS.length - 1 ? MONTHS[i + 1] : '';
+  return `<div class="mswitch">
+    <button ${prev ? `data-m="${prev}"` : 'disabled'}>‹</button>
+    <span>${esc(monthName(selMonth))}</span>
+    <button ${next ? `data-m="${next}"` : 'disabled'}>›</button></div>`;
+}
+function wireSwitcher() {
+  view.querySelectorAll('.mswitch button[data-m]').forEach((b) => b.addEventListener('click', () => { selMonth = b.dataset.m; render(); }));
+}
 
 /* ---------- views ---------- */
 function renderOverview() {
   const total = ACCOUNTS.reduce((s, a) => s + a.balance, 0);
-  const st = monthStats();
+  const st = monthStats(selMonth);
   const accRows = ACCOUNTS.map((a) => `<div class="row-card"><div class="main"><div class="t">${esc(a.name)}</div><div class="s">${esc(a.type || '')}</div></div>
     <div class="amt ${a.balance < 0 ? 'neg' : 'pos'}">${a.balance < 0 ? '−' : ''}${money(a.balance)}</div></div>`).join('');
   const budRows = CATS.map((c) => {
@@ -118,29 +145,32 @@ function renderOverview() {
   view.innerHTML = `
     <div class="hero"><div class="lab">Total balance across ${ACCOUNTS.length} account${ACCOUNTS.length === 1 ? '' : 's'}</div>
       <div class="bal">${total < 0 ? '−' : ''}${money(total)}</div>
+      ${monthSwitcher()}
       <div class="trio">
         <div class="cell in"><span class="n">${money(st.income)}</span><span class="l">In</span></div>
         <div class="cell out"><span class="n">${money(st.expense)}</span><span class="l">Out</span></div>
         <div class="cell"><span class="n">${st.net < 0 ? '−' : ''}${money(st.net)}</span><span class="l">Net</span></div>
       </div>
-      <div class="lab" style="margin-top:12px">${esc(monthLabel)}</div>
     </div>
     <div class="section-label">Accounts</div>${accRows || '<div class="empty">No accounts yet.</div>'}
-    <div class="section-label">Budget this month</div>${budRows || '<div class="empty">No budget categories.</div>'}`;
+    <div class="section-label">Budget · ${esc(monthName(selMonth))}</div>${budRows || '<div class="empty">No budget categories.</div>'}`;
+  wireSwitcher();
 }
 function renderTx() {
-  const list = [...TX].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const list = [...txOf(selMonth)].sort((a, b) => (a.date < b.date ? 1 : -1));
   const rows = list.map((t) => `<div class="row-card">
     <div class="main"><div class="t">${esc(t.description || '(no description)')}</div>
       <div class="s">${esc(t.date)} · ${esc(t.category || '—')} · ${esc(t.account || '—')}</div></div>
     <div class="amt ${t.amount < 0 ? 'neg' : 'pos'}">${t.amount < 0 ? '−' : '+'}${money(t.amount)}</div></div>`).join('');
-  view.innerHTML = `<div class="section-label">${esc(monthLabel)} · ${list.length} transactions</div>
+  view.innerHTML = `${monthSwitcher()}
+    <div class="section-label">${list.length} transactions</div>
     <button class="btn ghost" id="importBtn" style="width:100%;margin-bottom:12px">⭳ Import statement (CSV)</button>
-    ${rows || '<div class="empty">No transactions yet. Tap ＋ to add one.</div>'}`;
+    ${rows || '<div class="empty">No transactions this month. Tap ＋ to add one.</div>'}`;
+  wireSwitcher();
   el('importBtn').addEventListener('click', openCsv);
 }
 function renderBudget() {
-  const st = monthStats();
+  const st = monthStats(selMonth);
   const rows = CATS.map((c) => {
     const spent = st.byCat[c.category] || 0; const over = spent > c.monthly; const left = round2(c.monthly - spent);
     const pct = c.monthly > 0 ? Math.min(spent / c.monthly, 1) * 100 : (spent > 0 ? 100 : 0);
@@ -149,12 +179,39 @@ function renderBudget() {
       <div class="bar"><span style="width:${pct.toFixed(0)}%;background:${over ? 'var(--crit)' : 'var(--accent)'}"></span></div></div>`;
   }).join('');
   const uncategorized = st.byCat.Other || 0;
-  view.innerHTML = `<div class="section-label">Budget · ${esc(monthLabel)}</div>${rows || '<div class="empty">No categories.</div>'}
-    ${uncategorized ? `<p class="muted small">${money(uncategorized)} in “Other”. Add keywords to ../money/budget.md → ## Rules to sort it.</p>` : ''}`;
+  view.innerHTML = `${monthSwitcher()}<div class="section-label">Budget</div>${rows || '<div class="empty">No categories.</div>'}
+    ${uncategorized ? `<p class="muted small">${money(uncategorized)} in “Other”. Add keywords to money/budget.md → ## Rules to sort it.</p>` : ''}`;
+  wireSwitcher();
+}
+function renderReports() {
+  const months = MONTHS.slice(-6);
+  const stats = months.map((m) => ({ m, ...monthStats(m) }));
+  const maxFlow = Math.max(1, ...stats.map((s) => Math.max(s.income, s.expense)));
+  const flow = stats.map((s) => `<div class="mrow">
+    <div class="mlab">${esc(monthName(s.m).replace(/ \d+$/, ''))}</div>
+    <div class="mbars">
+      <div class="mbar"><span class="fill in" style="width:${(s.income / maxFlow * 100).toFixed(0)}%"></span><b>${money(s.income)}</b></div>
+      <div class="mbar"><span class="fill out" style="width:${(s.expense / maxFlow * 100).toFixed(0)}%"></span><b>${money(s.expense)}</b></div>
+    </div>
+    <div class="mnet ${s.net < 0 ? 'neg' : 'pos'}">${s.net < 0 ? '−' : '+'}${money(s.net)}</div>
+  </div>`).join('');
+  const st = monthStats(selMonth);
+  const cats = Object.entries(st.byCat).sort((a, b) => b[1] - a[1]);
+  const maxCat = Math.max(1, ...cats.map((c) => c[1]));
+  const catBars = cats.map(([name, amt]) => `<div class="bcat"><div class="top"><span>${esc(name)}</span><span class="nums">${money(amt)}</span></div>
+    <div class="bar"><span style="width:${(amt / maxCat * 100).toFixed(0)}%;background:var(--accent)"></span></div></div>`).join('');
+  view.innerHTML = `
+    <div class="section-label">Cashflow · last ${months.length} month${months.length === 1 ? '' : 's'}</div>
+    <div class="legend"><span><i class="in"></i>In</span><span><i class="out"></i>Out</span></div>
+    <div class="report-card">${flow || '<div class="empty">No data.</div>'}</div>
+    ${monthSwitcher()}
+    <div class="section-label">Spending by category</div>
+    <div class="report-card">${catBars || '<div class="empty">No spending in ' + esc(monthName(selMonth)) + '.</div>'}</div>`;
+  wireSwitcher();
 }
 function render() {
-  el('view').scrollTo?.(0, 0);
-  if (TAB === 'tx') renderTx(); else if (TAB === 'budget') renderBudget(); else renderOverview();
+  view.scrollTo?.(0, 0);
+  ({ tx: renderTx, budget: renderBudget, reports: renderReports }[TAB] || renderOverview)();
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === TAB));
 }
 
@@ -170,17 +227,23 @@ function openTx() {
   el('txAccount').innerHTML = ACCOUNTS.map((a) => `<option>${esc(a.name)}</option>`).join('') || '<option>Cash</option>';
   el('txSheet').hidden = false;
 }
-function ledgerHeader() {
-  return `---\ntype: ledger\nmonth: ${MONTH}\n---\n\n# ${monthLabel}\n\n| date | description | amount | category | account |\n|---|---|---|---|---|\n`;
+function ledgerHeader(month) {
+  return `---\ntype: ledger\nmonth: ${month}\n---\n\n# ${monthName(month)}\n\n| date | description | amount | category | account |\n|---|---|---|---|---|\n`;
 }
-function appendLedgerRow(md, t) {
+function appendLedgerRow(md, t, month) {
   const line = `| ${t.date} | ${t.description.replace(/\|/g, '/')} | ${t.amount} | ${t.category} | ${t.account} |`;
-  if (!md || !/\|\s*date\s*\|/i.test(md)) return ledgerHeader() + line + '\n';
+  if (!md || !/\|\s*date\s*\|/i.test(md)) return ledgerHeader(month) + line + '\n';
   const lines = md.split('\n');
   let last = -1;
   for (let i = 0; i < lines.length; i++) if (lines[i].trim().startsWith('|')) last = i;
   lines.splice(last + 1, 0, line);
   return lines.join('\n');
+}
+function rememberTx(month, list) {
+  LEDGERS[month] = [...(LEDGERS[month] || []), ...list];
+  const isNew = !MONTHS.includes(month);
+  if (isNew) { MONTHS.push(month); MONTHS.sort(); }
+  return isNew;
 }
 async function saveTx() {
   const amt = Math.abs(parseFloat(el('txAmount').value));
@@ -192,14 +255,16 @@ async function saveTx() {
     category: txKind === 'income' ? 'Income' : el('txCategory').value,
     account: el('txAccount').value || 'Cash',
   };
+  const month = t.date.slice(0, 7);
   const btn = el('txSave'); btn.disabled = true; el('txHint').classList.remove('err'); el('txHint').textContent = 'Saving…';
   try {
     requireToken();
-    const path = `money/${MONTH}.md`;
+    const path = `money/${month}.md`;
     const cur = await ghGetFile(path);
-    await ghPutFile(path, appendLedgerRow(cur ? cur.text : '', t), `Add transaction: ${t.description}`, cur ? cur.sha : undefined);
-    el('txSheet').hidden = true;
-    TX.push(t); render(); // optimistic; repo republishes in ~1 min
+    await ghPutFile(path, appendLedgerRow(cur ? cur.text : '', t, month), `Add transaction: ${t.description}`, cur ? cur.sha : undefined);
+    const isNew = rememberTx(month, [t]); selMonth = month;
+    if (isNew) { try { await writeIndex(); } catch { /* index is best-effort */ } }
+    el('txSheet').hidden = true; render();
   } catch (e) {
     if (e.needToken) { el('txSheet').hidden = true; openToken('Connect GitHub once, then add transactions.'); }
     else { el('txHint').textContent = '⚠︎ ' + e.message; el('txHint').classList.add('err'); }
@@ -240,7 +305,7 @@ function csvTransactions() {
     if (signed) amount = n; else amount = -Math.abs(n); // debit-only → all expense
     const desc = (r[dc] || '').trim();
     let date = (dateCol >= 0 ? String(r[dateCol]) : '').match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-    date = date ? `${date[1]}-${String(+date[2]).padStart(2, '0')}-${String(+date[3]).padStart(2, '0')}` : `${MONTH}-01`;
+    date = date ? `${date[1]}-${String(+date[2]).padStart(2, '0')}-${String(+date[3]).padStart(2, '0')}` : `${CUR_MONTH}-01`;
     const category = amount >= 0 ? 'Income' : categorize(desc, RULES);
     out.push({ date, description: desc || '(no description)', amount: round2(amount), category, account });
   });
@@ -261,12 +326,19 @@ async function applyCsv() {
   const btn = el('csvApply'); btn.disabled = true; el('csvHint').classList.remove('err'); el('csvHint').textContent = 'Adding…';
   try {
     requireToken();
-    const path = `money/${MONTH}.md`;
-    const cur = await ghGetFile(path);
-    let md = cur ? cur.text : '';
-    for (const t of tx) md = appendLedgerRow(md, t);
-    await ghPutFile(path, md, `Import ${tx.length} transactions for ${MONTH}`, cur ? cur.sha : undefined);
-    TX.push(...tx);
+    const byMonth = {};
+    for (const t of tx) (byMonth[t.date.slice(0, 7)] ||= []).push(t);
+    let anyNew = false;
+    for (const [month, list] of Object.entries(byMonth)) {
+      const path = `money/${month}.md`;
+      const cur = await ghGetFile(path);
+      let md = cur ? cur.text : '';
+      for (const t of list) md = appendLedgerRow(md, t, month);
+      await ghPutFile(path, md, `Import ${list.length} transactions for ${month}`, cur ? cur.sha : undefined);
+      if (rememberTx(month, list)) anyNew = true;
+    }
+    if (anyNew) { try { await writeIndex(); } catch { /* index is best-effort */ } }
+    selMonth = Object.keys(byMonth).sort().pop() || selMonth;
     el('csvSheet').hidden = true; TAB = 'tx'; render();
   } catch (e) {
     if (e.needToken) { el('csvSheet').hidden = true; openToken('Connect GitHub once, then import.'); }
