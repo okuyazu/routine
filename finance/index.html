@@ -86,6 +86,29 @@
     </div>
   </div>
 
+  <!-- Screenshot import -->
+  <div class="sheet-backdrop" id="imgSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <div class="sheet-handle"></div>
+      <h2>Import from screenshot</h2>
+      <p class="muted">Pick a screenshot from your bank app. The text is read on your phone — the image is never uploaded or saved. Detection is best-effort, so check every row before adding.</p>
+      <input id="imgFile" type="file" accept="image/*" multiple style="margin-top:8px" />
+      <p class="muted small" id="imgProgress" hidden></p>
+      <div id="imgResult" hidden>
+        <label class="field"><span>Add all into account</span><select id="imgAccount"></select></label>
+        <p class="muted small" id="imgCount" style="text-align:left"></p>
+        <div id="imgRows" class="img-rows"></div>
+        <button class="btn ghost" id="imgAddRow" style="width:100%;margin-top:4px">＋ Add a row</button>
+        <div class="sheet-actions">
+          <button class="btn primary" id="imgApply">Add transactions</button>
+          <button class="btn ghost" id="imgCancel">Cancel</button>
+        </div>
+      </div>
+      <details style="margin-top:12px"><summary class="muted small" style="cursor:pointer">See raw detected text</summary><pre id="imgRaw" class="img-raw"></pre></details>
+      <p class="muted small hint" id="imgHint"></p>
+    </div>
+  </div>
+
   <!-- GitHub connection -->
   <div class="sheet-backdrop" id="tokenSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true">

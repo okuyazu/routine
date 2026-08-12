@@ -164,10 +164,14 @@ function renderTx() {
     <div class="amt ${t.amount < 0 ? 'neg' : 'pos'}">${t.amount < 0 ? '−' : '+'}${money(t.amount)}</div></div>`).join('');
   view.innerHTML = `${monthSwitcher()}
     <div class="section-label">${list.length} transactions</div>
-    <button class="btn ghost" id="importBtn" style="width:100%;margin-bottom:12px">⭳ Import statement (CSV)</button>
+    <div class="field-row" style="margin-bottom:12px">
+      <button class="btn ghost" id="importBtn" style="flex:1">⭳ CSV</button>
+      <button class="btn ghost" id="importImgBtn" style="flex:1">📷 Screenshot</button>
+    </div>
     ${rows || '<div class="empty">No transactions this month. Tap ＋ to add one.</div>'}`;
   wireSwitcher();
   el('importBtn').addEventListener('click', openCsv);
+  el('importImgBtn').addEventListener('click', openImg);
 }
 function renderBudget() {
   const st = monthStats(selMonth);
@@ -346,6 +350,151 @@ async function applyCsv() {
   } finally { btn.disabled = false; }
 }
 
+/* ---------- screenshot import (on-device OCR) ---------- */
+let _tessP = null;
+function loadTesseract() {
+  if (_tessP) return _tessP;
+  _tessP = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = () => (window.Tesseract ? resolve(window.Tesseract) : reject(new Error('Text reader failed to start.')));
+    s.onerror = () => reject(new Error('Couldn’t load the text reader — needs internet the first time.'));
+    document.head.appendChild(s);
+  });
+  return _tessP;
+}
+async function ocrImage(file, onProgress) {
+  const T = await loadTesseract();
+  const { data } = await T.recognize(file, 'eng', { logger: (m) => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); } });
+  return data.text || '';
+}
+
+const p2 = (n) => String(+n).padStart(2, '0');
+const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function parseDateLine(line) {
+  let m;
+  if ((m = line.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/))) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
+  if ((m = line.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/))) return `${m[3]}-${p2(m[2])}-${p2(m[1])}`;
+  if ((m = line.match(/\b(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(20\d{2})\b/)) && MON[m[2].slice(0, 3).toLowerCase()]) return `${m[3]}-${p2(MON[m[2].slice(0, 3).toLowerCase()])}-${p2(m[1])}`;
+  if ((m = line.match(/\b([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(20\d{2})\b/)) && MON[m[1].slice(0, 3).toLowerCase()]) return `${m[3]}-${p2(MON[m[1].slice(0, 3).toLowerCase()])}-${p2(m[2])}`;
+  if ((m = line.match(/\b(\d{1,2})\s+([A-Za-z]{3,})\.?\b/)) && MON[m[2].slice(0, 3).toLowerCase()]) return `${new Date().getFullYear()}-${p2(MON[m[2].slice(0, 3).toLowerCase()])}-${p2(m[1])}`;
+  return null;
+}
+const MON_RX = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*';
+const DATE_RX = new RegExp(`(20\\d{2}[-/.]\\d{1,2}[-/.]\\d{1,2})|(\\b\\d{1,2}[-/.]\\d{1,2}[-/.]20\\d{2}\\b)|(\\b\\d{1,2}\\s+${MON_RX}\\.?(?:\\s+20\\d{2})?\\b)|(\\b${MON_RX}\\.?\\s+\\d{1,2},?\\s+20\\d{2}\\b)`, 'gi');
+function parseAmountLine(line) {
+  const rx = /[-−+]?\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|[-−+]?\d+\.\d{1,2}|[-−+]?\d+/g;
+  const cur = /฿|thb|บาท/i.test(line);
+  let best = null, m;
+  while ((m = rx.exec(line))) {
+    const tok = m[0].replace(/−/g, '-');
+    const strong = /[.,]/.test(tok) || /^[-+]/.test(tok); // has decimals, thousands, or a sign
+    if (!strong && !cur) continue; // a bare integer with no currency mark isn't money
+    const value = parseFloat(tok.replace(/[^0-9.]/g, ''));
+    if (isNaN(value) || value === 0) continue;
+    const cand = { value, index: m.index, len: m[0].length, neg: tok.startsWith('-'), pos: tok.startsWith('+'), strong };
+    // prefer a "strong" token; among equals prefer the rightmost (amounts sit at line end)
+    if (!best || (cand.strong && !best.strong) || (cand.strong === best.strong && cand.index >= best.index)) best = cand;
+  }
+  return best;
+}
+function parseReceiptText(text) {
+  const out = []; let ctx = null; const today = new Date().toISOString().slice(0, 10);
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim(); if (!line) continue;
+    const d = parseDateLine(line);
+    if (/\bbalance\b/i.test(line)) { if (d) ctx = d; continue; } // skip summary/balance lines
+    const work = line.replace(DATE_RX, ' '); // remove dates so day digits aren't read as amounts
+    const amt = parseAmountLine(work);
+    if (!amt) { if (d) ctx = d; continue; } // a date-only line just sets the running context
+    const desc = (work.slice(0, amt.index) + ' ' + work.slice(amt.index + amt.len))
+      .replace(/฿|THB|บาท/gi, '').replace(/[|·•]/g, ' ').replace(/\s{2,}/g, ' ')
+      .replace(/^[\s.,;:\-]+|[\s.,;:\-]+$/g, '').trim();
+    const amount = amt.pos ? amt.value : -amt.value; // default to expense unless explicitly +
+    const date = d || ctx || today;
+    out.push({ date, description: desc, amount: round2(amount), category: amount >= 0 ? 'Income' : categorize(desc, RULES) });
+  }
+  return out;
+}
+
+let imgTx = [];
+function openImg() {
+  imgTx = []; el('imgFile').value = ''; el('imgResult').hidden = true; el('imgProgress').hidden = true;
+  el('imgRaw').textContent = ''; el('imgHint').textContent = ''; el('imgHint').classList.remove('err');
+  el('imgSheet').hidden = false;
+}
+function imgCatOptions(sel) {
+  return ['Income', ...CATS.map((c) => c.category), 'Other'].filter((v, i, a) => a.indexOf(v) === i)
+    .map((c) => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
+}
+function renderImgRows() {
+  el('imgCount').textContent = imgTx.length ? `${imgTx.length} row${imgTx.length === 1 ? '' : 's'} — edit, delete, or add before saving` : '';
+  el('imgRows').innerHTML = imgTx.map((t, i) => `
+    <div class="img-row" data-i="${i}">
+      <input class="ir-desc" type="text" value="${esc(t.description)}" placeholder="Description" />
+      <input class="ir-amt" type="number" step="any" value="${t.amount}" placeholder="0" />
+      <input class="ir-date" type="date" value="${esc(t.date)}" />
+      <select class="ir-cat">${imgCatOptions(t.category)}</select>
+      <button class="ir-del" title="Remove row">✕</button>
+    </div>`).join('') || '<div class="empty">No rows detected. Tap “Add a row”.</div>';
+  el('imgRows').querySelectorAll('.img-row').forEach((row) => {
+    const i = +row.dataset.i;
+    row.querySelector('.ir-desc').addEventListener('input', (e) => { imgTx[i].description = e.target.value; });
+    row.querySelector('.ir-amt').addEventListener('input', (e) => { imgTx[i].amount = +e.target.value || 0; });
+    row.querySelector('.ir-date').addEventListener('input', (e) => { imgTx[i].date = e.target.value; });
+    row.querySelector('.ir-cat').addEventListener('change', (e) => { imgTx[i].category = e.target.value; });
+    row.querySelector('.ir-del').addEventListener('click', () => { imgTx.splice(i, 1); renderImgRows(); });
+  });
+}
+async function handleImgFiles(files) {
+  imgTx = []; let raw = '';
+  el('imgResult').hidden = true; el('imgHint').textContent = ''; el('imgHint').classList.remove('err');
+  const prog = el('imgProgress'); prog.hidden = false;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      prog.textContent = `Reading image ${i + 1} of ${files.length}…`;
+      const text = await ocrImage(files[i], (p) => { prog.textContent = `Reading image ${i + 1} of ${files.length}… ${Math.round(p * 100)}%`; });
+      raw += (raw ? '\n----\n' : '') + text;
+      imgTx.push(...parseReceiptText(text));
+    }
+    prog.hidden = true;
+    el('imgRaw').textContent = raw || '(no text detected)';
+    el('imgAccount').innerHTML = ACCOUNTS.map((a) => `<option>${esc(a.name)}</option>`).join('') || '<option>Cash</option>';
+    renderImgRows();
+    el('imgResult').hidden = false;
+    if (!imgTx.length) { el('imgHint').textContent = 'No transactions detected automatically — add rows by hand, or open the raw text to see what was read.'; }
+  } catch (e) {
+    prog.hidden = true; el('imgHint').textContent = '⚠︎ ' + e.message; el('imgHint').classList.add('err');
+  }
+}
+async function applyImg() {
+  const account = el('imgAccount').value || 'Cash';
+  const tx = imgTx.filter((t) => t.amount && t.date)
+    .map((t) => ({ date: t.date, description: (t.description || '').trim() || '(no description)', amount: round2(t.amount), category: t.category || (t.amount >= 0 ? 'Income' : 'Other'), account }));
+  if (!tx.length) { el('imgHint').textContent = '⚠︎ Nothing to add — each row needs a date and a non-zero amount.'; el('imgHint').classList.add('err'); return; }
+  const btn = el('imgApply'); btn.disabled = true; el('imgHint').classList.remove('err'); el('imgHint').textContent = 'Adding…';
+  try {
+    requireToken();
+    const byMonth = {};
+    for (const t of tx) (byMonth[t.date.slice(0, 7)] ||= []).push(t);
+    let anyNew = false;
+    for (const [month, list] of Object.entries(byMonth)) {
+      const path = `money/${month}.md`;
+      const cur = await ghGetFile(path);
+      let md = cur ? cur.text : '';
+      for (const t of list) md = appendLedgerRow(md, t, month);
+      await ghPutFile(path, md, `Import ${list.length} transactions from screenshot for ${month}`, cur ? cur.sha : undefined);
+      if (rememberTx(month, list)) anyNew = true;
+    }
+    if (anyNew) { try { await writeIndex(); } catch { /* index is best-effort */ } }
+    selMonth = Object.keys(byMonth).sort().pop() || selMonth;
+    el('imgSheet').hidden = true; TAB = 'tx'; render();
+  } catch (e) {
+    if (e.needToken) { el('imgSheet').hidden = true; openToken('Connect GitHub once, then import.'); }
+    else { el('imgHint').textContent = '⚠︎ ' + e.message; el('imgHint').classList.add('err'); }
+  } finally { btn.disabled = false; }
+}
+
 /* ---------- token sheet ---------- */
 function openToken(hint) { el('tkInput').value = GH.token; el('tkHint').textContent = hint || (GH.token ? 'A token is saved on this device.' : ''); el('tokenSheet').hidden = false; }
 
@@ -366,6 +515,11 @@ el('csvSheet').addEventListener('click', (e) => { if (e.target === el('csvSheet'
 el('csvFile').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { loadCsv(String(rd.result)); } catch { el('csvHint').textContent = '⚠︎ Could not read that file.'; el('csvHint').classList.add('err'); } }; rd.readAsText(f); });
 ['csvAmount', 'csvDesc', 'csvSign', 'csvAccount'].forEach((id) => el(id).addEventListener('change', updateCsvPreview));
 el('csvApply').addEventListener('click', applyCsv);
+el('imgCancel').addEventListener('click', () => { el('imgSheet').hidden = true; });
+el('imgSheet').addEventListener('click', (e) => { if (e.target === el('imgSheet')) el('imgSheet').hidden = true; });
+el('imgFile').addEventListener('change', (e) => { const f = [...(e.target.files || [])]; if (f.length) handleImgFiles(f); });
+el('imgAddRow').addEventListener('click', () => { imgTx.push({ date: new Date().toISOString().slice(0, 10), description: '', amount: 0, category: 'Other' }); renderImgRows(); });
+el('imgApply').addEventListener('click', applyImg);
 el('tkSave').addEventListener('click', () => { GH.token = el('tkInput').value.trim(); el('tkHint').textContent = GH.token ? 'Saved ✓' : 'Enter a token.'; if (GH.token) setTimeout(() => { el('tokenSheet').hidden = true; }, 600); });
 el('tkClear').addEventListener('click', () => { GH.token = ''; el('tkInput').value = ''; el('tkHint').textContent = 'Removed.'; });
 el('tokenSheet').addEventListener('click', (e) => { if (e.target === el('tokenSheet')) el('tokenSheet').hidden = true; });

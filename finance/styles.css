@@ -120,3 +120,14 @@ a { color: var(--accent-2); }
 .mbar b { font-size: 11.5px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mnet { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mnet.pos { color: var(--good); } .mnet.neg { color: var(--crit); }
+
+.img-rows { margin-top: 8px; }
+.img-row { display: grid; grid-template-columns: 1fr 96px 34px; grid-template-areas: "desc amt del" "date cat del";
+  gap: 6px 8px; align-items: center; padding: 9px; border: 1px solid var(--line); border-radius: 11px; margin-bottom: 8px; background: var(--card); }
+.img-row .ir-desc { grid-area: desc; } .img-row .ir-amt { grid-area: amt; }
+.img-row .ir-date { grid-area: date; } .img-row .ir-cat { grid-area: cat; }
+.img-row input, .img-row select { padding: 8px 9px; font-size: 13.5px; }
+.ir-del { grid-area: del; align-self: stretch; background: var(--bg); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 8px; cursor: pointer; font-size: 15px; }
+.img-raw { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px; max-height: 170px; overflow: auto; margin-top: 8px; }
