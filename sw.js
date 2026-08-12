@@ -3,7 +3,7 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v17';
+const VERSION = 'v18';
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
 
@@ -14,7 +14,12 @@ const SHELL_FILES = [
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './finance/',
+  './finance/index.html',
+  './finance/styles.css',
+  './finance/app.js',
+  './finance/manifest.webmanifest'
 ];
 
 self.addEventListener('install', (e) => {

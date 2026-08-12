@@ -530,3 +530,16 @@ async function boot() {
 }
 boot();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') boot(); });
+
+/* ---------- service worker (shared with Benchmarks; enables install + offline) ---------- */
+if ('serviceWorker' in navigator) {
+  let reloading = false;
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) return; reloading = true; location.reload(); });
+  }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('../sw.js')
+      .then((reg) => { reg.update(); setInterval(() => reg.update(), 60 * 60 * 1000); })
+      .catch(() => {});
+  });
+}
