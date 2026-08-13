@@ -3,8 +3,7 @@
   "tagline": "Personal milestones & progress",
   "projects": [
     "projects/Example Goal.md",
-    "projects/Monthly Budget.md",
-    "projects/Hyrox Base-Building.md"
+    "projects/Monthly Budget.md"
   ],
   "inbox": [
     "inbox/Welcome.md"

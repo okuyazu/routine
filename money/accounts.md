@@ -6,6 +6,6 @@ type: accounts
 
 | account | type | balance |
 |---|---|---|
-| K-Bank | bank | 50000 |
-| Cash | cash | 2000 |
-| Credit Card | credit | -3000 |
+| Bank | bank | 0 |
+| Cash | cash | 0 |
+| Card | credit | 0 |
