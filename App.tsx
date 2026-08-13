@@ -2,8 +2,8 @@
  * App.tsx
  * -------------------------------------------------------------
  * The app's entry point. It does three things:
- *   1. Wraps everything in <ConceptsProvider> so every screen can
- *      read/modify the concept list.
+ *   1. Wraps everything in <HealthProvider> so every screen can
+ *      read/modify the logged data and see the derived scores.
  *   2. Sets up navigation (the stack of screens you push/pop).
  *   3. Styles the top navigation bar.
  */
@@ -15,28 +15,23 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from './src/navigation';
-import { ConceptsProvider } from './src/ConceptsContext';
-import { PremiumProvider } from './src/premium';
-import { ProgressProvider } from './src/progress';
-import { JournalProvider } from './src/journal';
+import { HealthProvider } from './src/HealthContext';
 import { colors } from './src/theme';
 
-import HomeScreen from './screens/HomeScreen';
-import LibraryScreen from './screens/LibraryScreen';
-import AddConceptScreen from './screens/AddConceptScreen';
-import ConceptDetailScreen from './screens/ConceptDetailScreen';
-import ReviewScreen from './screens/ReviewScreen';
-import ReflectScreen from './screens/ReflectScreen';
+import DashboardScreen from './screens/DashboardScreen';
+import LabsScreen from './screens/LabsScreen';
+import ExerciseScreen from './screens/ExerciseScreen';
+import DietScreen from './screens/DietScreen';
+import SleepScreen from './screens/SleepScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import InsightsScreen from './screens/InsightsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <PremiumProvider>
-      <ProgressProvider>
-      <JournalProvider>
-      <ConceptsProvider>
+      <HealthProvider>
         <NavigationContainer>
           <StatusBar style="dark" />
           <Stack.Navigator
@@ -48,43 +43,33 @@ export default function App() {
               contentStyle: { backgroundColor: colors.background },
             }}
           >
-            {/* Home has its own custom header, so we hide the default one. */}
+            {/* Dashboard has its own custom header, so we hide the default one. */}
             <Stack.Screen
-              name="Home"
-              component={HomeScreen}
+              name="Dashboard"
+              component={DashboardScreen}
               options={{ headerShown: false }}
             />
+            <Stack.Screen name="Labs" component={LabsScreen} options={{ title: 'Labs' }} />
             <Stack.Screen
-              name="Library"
-              component={LibraryScreen}
-              options={{ title: 'Library' }}
+              name="Exercise"
+              component={ExerciseScreen}
+              options={{ title: 'Exercise' }}
+            />
+            <Stack.Screen name="Diet" component={DietScreen} options={{ title: 'Diet' }} />
+            <Stack.Screen name="Sleep" component={SleepScreen} options={{ title: 'Sleep' }} />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ title: 'Profile' }}
             />
             <Stack.Screen
-              name="AddConcept"
-              component={AddConceptScreen}
-              options={{ title: 'Add concept' }}
-            />
-            <Stack.Screen
-              name="ConceptDetail"
-              component={ConceptDetailScreen}
-              options={{ title: 'Concept' }}
-            />
-            <Stack.Screen
-              name="Review"
-              component={ReviewScreen}
-              options={{ title: 'Review' }}
-            />
-            <Stack.Screen
-              name="Reflect"
-              component={ReflectScreen}
-              options={{ title: 'Reflect' }}
+              name="Insights"
+              component={InsightsScreen}
+              options={{ title: 'Insights' }}
             />
           </Stack.Navigator>
         </NavigationContainer>
-      </ConceptsProvider>
-      </JournalProvider>
-      </ProgressProvider>
-      </PremiumProvider>
+      </HealthProvider>
     </SafeAreaProvider>
   );
 }

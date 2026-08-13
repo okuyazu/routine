@@ -1,41 +1,48 @@
-# Sophia — an AI philosophy learning app
+# Vita — a personal health & longevity tracker
 
-Add any philosophical concept — like **Stoicism**, **Kant's categorical
-imperative**, or **the meaning of life** — and the app generates a **lesson**,
-the **key ideas**, and **practical points** you can apply.
+Log your **labs**, **exercise**, **diet**, and **sleep**, and Vita combines all
+four into a single **Health Score** and an **estimated life expectancy** — with
+a fully transparent explanation of how the number is built.
 
-Built with **React Native + Expo** (one codebase runs on both iOS and Android).
+Built with **React Native + Expo** (one codebase runs on iOS, Android, and web).
 
-> **Status:** The full app works today using built-in placeholder content, so
-> you can build, run, and feel the whole experience without any API keys.
-> Turning on real AI is a small, isolated change — see
-> [Adding real AI](#adding-real-ai) below.
+> **Not medical advice.** Vita is an educational tool. Its estimate is a
+> transparent rule-of-thumb loosely based on public-health guidance (WHO
+> activity targets, sleep-duration research, standard lab reference ranges). It
+> **cannot** predict any individual's real lifespan. See a clinician for
+> anything about your health.
 
 ---
 
-## Run it on your phone (easiest way)
+## What it does
 
-You do **not** need Xcode or Android Studio for this.
+- **Four pillars, one score.** Labs, Exercise, Diet, and Sleep each get a
+  0–100 score; together they produce an overall Health Score.
+- **Life-expectancy estimate.** Each pillar nudges a baseline life expectancy
+  (set by sex) up or down. The dashboard shows the estimate and the net change.
+- **Lab ranges built in.** Blood pressure, cholesterol (total/LDL/HDL),
+  triglycerides, fasting glucose, HbA1c, and resting heart rate are each
+  compared to their optimal range. BMI is derived from your profile.
+- **Personalized insights.** The Insights screen ranks your biggest wins and
+  explains, pillar by pillar, exactly how the estimate was calculated.
+- **Private by default.** Everything is stored on your device (AsyncStorage).
+  Nothing is uploaded.
 
-1. **Install Node.js** (v18 or newer) on your computer if you haven't:
-   https://nodejs.org
-2. **Install the "Expo Go" app** on your phone from the App Store / Play Store.
-3. In this project folder, install dependencies:
+---
+
+## Run it
+
+You do **not** need Xcode or Android Studio to try it on your phone.
+
+1. **Install Node.js** (v18+): https://nodejs.org
+2. **Install "Expo Go"** on your phone (App Store / Play Store).
+3. In this folder:
    ```bash
    npm install
-   ```
-4. Start the app:
-   ```bash
    npx expo start
    ```
-5. A **QR code** appears in your terminal. Scan it with:
-   - **iPhone:** the Camera app
-   - **Android:** the Expo Go app
-
-The app opens on your phone and reloads automatically whenever you edit a file.
-
-> Prefer an on-screen simulator? Press `i` (iOS, macOS only) or `a` (Android,
-> requires Android Studio) in the terminal after `npx expo start`.
+4. Scan the **QR code** with your iPhone Camera (iOS) or the Expo Go app
+   (Android). To try it in a browser instead, run `npx expo start --web`.
 
 ---
 
@@ -47,86 +54,62 @@ index.ts                    Registers App.tsx with Expo (don't need to touch)
 app.json                    App name, icon, and configuration
 
 src/
-  ai.ts                     ⭐ The ONE place content is generated (swap in real AI here)
-  ConceptsContext.tsx       Global state: the list of concepts + add/remove/regenerate
-  storage.ts                Saves concepts on the device (AsyncStorage)
-  types.ts                  Data shapes (Concept, GeneratedContent)
+  health.ts                 ⭐ The scoring "brain": pillar scores + life-expectancy model
+  HealthContext.tsx         Global state: all logged data + add/remove + derived summary
+  storage.ts                Saves everything on the device (AsyncStorage)
+  types.ts                  Data shapes (Profile, LabEntry, ExerciseEntry, …)
+  ui.tsx                    Shared inputs/buttons/cards used by the logging screens
   theme.ts                  Colors, spacing, font sizes — restyle the app here
   navigation.ts             The list of screens and what data each needs
 
 screens/
-  HomeScreen.tsx            Your library of concepts + the Add button
-  AddConceptScreen.tsx      Type a concept (or tap a suggestion) to add it
-  ConceptDetailScreen.tsx   Shows the Lesson / Key Ideas / Practical Points
+  DashboardScreen.tsx       Overview: Health Score + life-expectancy estimate + pillars
+  LabsScreen.tsx            Log blood/vitals markers; see each vs. its optimal range
+  ExerciseScreen.tsx        Log workouts (activity, minutes, intensity)
+  DietScreen.tsx            Log a daily diet snapshot (quality, fruit/veg, sugar, alcohol)
+  SleepScreen.tsx           Log a night's sleep (hours, quality)
+  ProfileScreen.tsx         Age, sex, height, weight (sets baseline + BMI)
+  InsightsScreen.tsx        Top wins + a transparent breakdown of the estimate
 ```
 
 ### The core loop
 
 ```
-Add screen  →  addConcept(title)        (ConceptsContext)
-            →  saved to the device       (storage.ts)
-            →  generateConcept(title)     (ai.ts)  ← content is created here
-            →  result saved & shown       (ConceptDetailScreen)
+Logging screen  →  addLab / addExercise / addDiet / addSleep   (HealthContext)
+                →  saved to the device                          (storage.ts)
+                →  summarize(data)                              (health.ts)
+                →  scores + life-expectancy estimate shown      (DashboardScreen / Insights)
 ```
 
-Everything flows through `generateConcept()` in `src/ai.ts`. The rest of the app
-doesn't know or care whether that content comes from a placeholder or from a
-real AI — which is exactly why turning on AI later is a one-file change.
+Everything derived flows through `summarize()` in `src/health.ts`. Every rule in
+that file is deliberately simple and readable, so the model is easy to audit and
+tweak — and never a black box.
 
 ---
 
-## Adding real AI
+## How the estimate works (in brief)
 
-Right now `src/ai.ts` returns hand-written content. To use **real Claude AI**:
+Each pillar is scored 0–100 from your **last 7 days** of logs (labs use your most
+recent reading per marker):
 
-**Important:** never put an API key inside the mobile app — anyone can extract
-it from a published app. Instead, run a tiny backend that holds the key, and
-have the app call your backend.
+| Pillar   | Weight | Basis |
+|----------|:------:|-------|
+| 🩸 Labs     | 35% | Each marker vs. its standard optimal range (incl. BMI) |
+| 🏃 Exercise | 25% | Weekly minutes vs. the WHO 150-min target (vigorous counts double) |
+| 🥗 Diet     | 20% | Daily quality + fruit/veg, minus sugary drinks & excess alcohol |
+| 😴 Sleep    | 20% | A consistent 7–8 hours with good quality |
 
-### 1. A minimal backend (Node.js example)
-
-```js
-// server.js  — run this on a server you control (not in the app)
-import express from 'express';
-import Anthropic from '@anthropic-ai/sdk';
-
-const app = express();
-app.use(express.json());
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-app.post('/generate', async (req, res) => {
-  const { title } = req.body;
-  const msg = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 1024,
-    messages: [{
-      role: 'user',
-      content:
-        `You are a philosophy tutor. For the concept "${title}", respond with ` +
-        `ONLY valid JSON: {"summary": "one sentence", "lesson": "2-3 short ` +
-        `paragraphs", "keyIdeas": ["...","...","...","..."], ` +
-        `"practicalPoints": ["...","...","...","..."]}`,
-    }],
-  });
-  res.json(JSON.parse(msg.content[0].text));
-});
-
-app.listen(3000);
-```
-
-### 2. Point the app at it
-
-In `src/ai.ts`, replace the body of `generateConcept` with the `fetch` version
-shown in the comment at the bottom of that file, using your backend's URL.
-**Nothing else in the app changes.**
+Each pillar's score shifts a baseline life expectancy (79 male / 83 female) up
+or down; the total is capped within **±12 years** so no single habit swings it
+unrealistically. The Insights screen shows the exact per-pillar contribution.
 
 ---
 
 ## Ideas for what to build next
 
-- **Quiz / flashcard mode** generated from a concept's key ideas
-- **Categories or tags** (ethics, metaphysics, eastern philosophy…)
-- **Search** across your saved concepts
-- **Daily concept** notification
+- **Trends & charts** — plot each marker and pillar score over time
+- **Reminders** — nudge to log sleep in the morning, diet in the evening
+- **Import from wearables / Apple Health / Google Fit**
+- **Unit toggles** — mg/dL ↔ mmol/L, cm/kg ↔ ft/lb
 - **Cloud sync / accounts** (start by swapping out `storage.ts`)
-- **Follow-up questions** — ask the AI to go deeper on a specific point
+- **Refine the model** — the rules all live in one readable file, `src/health.ts`

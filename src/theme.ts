@@ -2,30 +2,40 @@
  * theme.ts
  * -------------------------------------------------------------
  * One central place for colors, spacing, and text sizes.
- * Keeping these here (instead of hard-coding "#4B3F72" all over
+ * Keeping these here (instead of hard-coding "#0E9F84" all over
  * the app) means you can restyle the whole app by editing ONE file.
  */
 
 export const colors = {
   // Backgrounds
-  background: '#F6F4EF', // warm paper-like background
+  background: '#F3F7F6', // cool, clean off-white
   surface: '#FFFFFF', // cards
-  surfaceAlt: '#EFEBE2',
+  surfaceAlt: '#E7F0EE',
 
-  // Brand / accents (a calm, scholarly purple + gold)
-  primary: '#4B3F72',
-  primaryDark: '#362C57',
-  accent: '#C9A227',
+  // Brand / accents (a fresh, clinical teal + warm coral)
+  primary: '#0E9F84',
+  primaryDark: '#0A7C68',
+  accent: '#F2635A',
 
   // Text
-  text: '#1F1B2E',
-  textMuted: '#6B6577',
+  text: '#12211E',
+  textMuted: '#5F726E',
   textOnPrimary: '#FFFFFF',
 
-  // Feedback
-  danger: '#B3261E',
-  border: '#E3DED3',
+  // Feedback / status (used for lab ranges and scores)
+  good: '#1AA179', // in optimal range
+  warn: '#E1A100', // borderline
+  bad: '#D1453B', // out of range
+  danger: '#D1453B',
+  border: '#DCE7E4',
 };
+
+/** Map a 0–100 score to a status color (green → amber → red). */
+export function scoreColor(score: number): string {
+  if (score >= 75) return colors.good;
+  if (score >= 50) return colors.warn;
+  return colors.bad;
+}
 
 // A consistent spacing scale (multiples of 4). Use spacing.md, spacing.lg, etc.
 export const spacing = {
@@ -43,6 +53,7 @@ export const fontSize = {
   lg: 18,
   xl: 22,
   xxl: 28,
+  huge: 44,
 };
 
 export const radius = {

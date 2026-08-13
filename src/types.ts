@@ -4,66 +4,104 @@
  * TypeScript "types" describe the shape of our data. They don't
  * do anything at runtime — they just let the editor catch mistakes
  * (like a typo in a property name) before you ever run the app.
+ *
+ * Everything the user logs falls into four "pillars": labs,
+ * exercise, diet, and sleep. Together with a basic profile, these
+ * feed the health-score / life-expectancy estimate (see health.ts).
  */
 
+/** Dates are stored as plain 'YYYY-MM-DD' strings — easy to read & sort. */
+export type ISODate = string;
+
+export type Sex = 'male' | 'female';
+
 /**
- * The content the AI produces for a single philosophical concept.
- * These are exactly the four things the app displays on the detail screen.
+ * Basic profile. Age + sex set a baseline life expectancy; height +
+ * weight give us BMI, which is one of the lab-pillar markers.
  */
-export type GeneratedContent = {
-  /** A one-sentence summary shown under the title. */
-  summary: string;
-  /** The main teaching text — a few short paragraphs. */
-  lesson: string;
-  /** Bullet-point takeaways: the essential ideas to remember. */
-  keyIdeas: string[];
-  /** Bullet-point ways to actually apply the idea in daily life. */
-  practicalPoints: string[];
+export type Profile = {
+  age: number | null;
+  sex: Sex;
+  heightCm: number | null;
+  weightKg: number | null;
 };
 
 /**
- * A single flashcard: a question on the front, the answer on the back.
- * Used by the quiz / review mode.
+ * The lab markers we understand. Each id maps to a reference range
+ * and unit defined in health.ts. BMI is derived from the profile, so
+ * it is NOT logged here — the others are entered from a blood panel,
+ * a home BP cuff, a smartwatch, etc.
  */
-export type Flashcard = {
-  front: string;
-  back: string;
-};
+export type LabMarkerId =
+  | 'systolicBP'
+  | 'diastolicBP'
+  | 'restingHR'
+  | 'totalCholesterol'
+  | 'ldl'
+  | 'hdl'
+  | 'triglycerides'
+  | 'fastingGlucose'
+  | 'hba1c';
 
-/**
- * One section of premium "deep dive" content — a heading and a body of
- * text. A concept's deep dive is a list of these (History, Key Thinkers,
- * etc.). This is the paid, "go deeper" material.
- */
-export type DeepDiveSection = {
-  heading: string;
-  body: string;
-};
-
-/** Where a concept is in its lifecycle. Used to show spinners / errors. */
-export type ConceptStatus = 'generating' | 'ready' | 'error';
-
-/**
- * A concept the user has added, plus whatever the AI generated for it.
- */
-export type Concept = {
-  /** Unique id (we generate one when the concept is created). */
+/** A single lab reading: which marker, its value, and when it was taken. */
+export type LabEntry = {
   id: string;
-  /** What the user typed, e.g. "Stoicism". */
-  title: string;
-  /** When it was created (milliseconds since 1970) — used for sorting. */
   createdAt: number;
-  /** Current state: still generating, ready to read, or failed. */
-  status: ConceptStatus;
-  /** The generated content (present once status === 'ready'). */
-  content?: GeneratedContent;
-  /** Flashcards for quiz/review mode (present when we have them). */
-  flashcards?: Flashcard[];
-  /**
-   * Premium "deep dive" sections. Present only for concepts that have
-   * paid depth authored. Shown locked until the user unlocks premium.
-   */
-  deepDive?: DeepDiveSection[];
-  /** An error message (present only if status === 'error'). */
-  error?: string;
+  date: ISODate;
+  marker: LabMarkerId;
+  value: number;
 };
+
+export type ExerciseIntensity = 'light' | 'moderate' | 'vigorous';
+
+/** One workout / activity session. */
+export type ExerciseEntry = {
+  id: string;
+  createdAt: number;
+  date: ISODate;
+  activity: string; // e.g. "Run", "Weights", "Cycling"
+  minutes: number;
+  intensity: ExerciseIntensity;
+};
+
+/** One day's diet snapshot (kept coarse on purpose — quick to log). */
+export type DietEntry = {
+  id: string;
+  createdAt: number;
+  date: ISODate;
+  /** Self-rated overall quality of the day's eating, 1 (poor) – 5 (excellent). */
+  quality: number;
+  /** Servings of fruit & vegetables that day. */
+  fruitVeg: number;
+  /** Sugary drinks (soda, juice, sweetened coffee) that day. */
+  sugaryDrinks: number;
+  /** Standard alcohol units that day. */
+  alcoholUnits: number;
+};
+
+/** One night's sleep. */
+export type SleepEntry = {
+  id: string;
+  createdAt: number;
+  date: ISODate;
+  hours: number;
+  /** Self-rated sleep quality, 1 (poor) – 5 (excellent). */
+  quality: number;
+};
+
+/** The whole app's data — persisted as one blob in storage.ts. */
+export type HealthData = {
+  profile: Profile;
+  labs: LabEntry[];
+  exercise: ExerciseEntry[];
+  diet: DietEntry[];
+  sleep: SleepEntry[];
+};
+
+export const emptyHealthData = (): HealthData => ({
+  profile: { age: null, sex: 'male', heightCm: null, weightKg: null },
+  labs: [],
+  exercise: [],
+  diet: [],
+  sleep: [],
+});

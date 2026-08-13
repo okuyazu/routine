@@ -2,18 +2,16 @@
  * navigation.ts
  * -------------------------------------------------------------
  * Lists every screen in the app and what data each one needs.
- * This gives us type-safety: if you try to open the Detail screen
- * without passing a concept id, the editor will warn you.
+ * This gives us type-safety: if you try to open a screen with the
+ * wrong params, the editor will warn you.
  */
 
 export type RootStackParamList = {
-  Home: undefined; // Home needs no data.
-  Library: undefined; // Browse the built-in library.
-  AddConcept: undefined; // Add screen needs no data.
-  ConceptDetail: { id: string }; // Detail screen needs which concept to show.
-  // Flashcard review. With a conceptId -> review that one concept (free).
-  // Without one -> mixed review across the whole library (premium).
-  Review: { conceptId?: string };
-  // Socratic reflection on a single concept (free).
-  Reflect: { conceptId: string };
+  Dashboard: undefined; // Overview: score + life-expectancy estimate.
+  Labs: undefined; // Log & review blood/vitals markers.
+  Exercise: undefined; // Log workouts.
+  Diet: undefined; // Log daily eating.
+  Sleep: undefined; // Log nightly sleep.
+  Profile: undefined; // Age, sex, height, weight.
+  Insights: undefined; // How the estimate works + personalized tips.
 };
