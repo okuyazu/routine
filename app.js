@@ -399,14 +399,11 @@ function parseIdeaMd(text, path) {
 
 /* ---------- data loading ---------- */
 async function loadData() {
-  const bust = `?t=${Date.now()}`;
-  const manifest = await fetch(`data/manifest.json${bust}`).then((r) => {
-    if (!r.ok) throw new Error('manifest');
-    return r.json();
-  });
+  const mtext = await vaultRead('data/manifest.json');
+  if (!mtext) throw new Error('manifest');
+  const manifest = JSON.parse(mtext);
   META = manifest;
-  const getText = (path) =>
-    fetch(encodeURI(path) + bust).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+  const getText = (path) => vaultRead(path);
 
   const projTexts = await Promise.all((manifest.projects || []).map(getText));
   PROJECTS = projTexts.map((t, i) => (t
@@ -611,7 +608,7 @@ function renderHome() {
       <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:22px auto 0">
         <button class="btn primary" id="firstProjectBtn">＋ New project</button>
         <button class="btn ghost" id="firstInboxBtn">💡 Capture an idea</button>
-        <button class="btn ghost" id="firstConnectBtn">Connect GitHub</button>
+        <button class="btn ghost" id="firstConnectBtn">Connect GitHub (optional sync)</button>
       </div></div>`;
     el('firstProjectBtn').addEventListener('click', openProjectForm);
     el('firstInboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
@@ -672,7 +669,7 @@ function openProjectForm() {
     pfColor = b.dataset.c;
     el('pfSwatches').querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === b));
   }));
-  el('pfHint').textContent = GH.token ? '' : 'Tip: connect GitHub once (link below) to save projects.';
+  el('pfHint').textContent = GH.token ? '' : 'Saved on this device. Connect GitHub (below) to sync across devices — optional.';
   el('projectSheet').hidden = false;
 }
 async function submitProject() {
@@ -1039,6 +1036,10 @@ function buildProjectMd(f) {
 }
 
 async function ghGetFile(path) {
+  if (!GH.token) { // local mode: read the on-device overlay, else the base file
+    const t = await vaultRead(path);
+    return t == null ? null : { sha: 'local', text: t };
+  }
   const r = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
   if (r.status === 404) return null;
   if (!r.ok) throw await ghError(r);
@@ -1046,26 +1047,27 @@ async function ghGetFile(path) {
   return { sha: j.sha, text: b64decode(j.content) };
 }
 async function ghPutFile(path, text, message, sha) {
+  if (!GH.token) { await LV.set(path, text); return; } // local mode: save on device
   const body = { message, content: b64encode(text), branch: GH.branch };
   if (sha) body.sha = sha;
   const r = await fetch(ghUrl(path), { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
   if (!r.ok) throw await ghError(r);
 }
 async function ghDeleteFile(path, message, sha) {
+  if (!GH.token) { await LV.tomb(path); return; } // local mode: tombstone so it stays deleted
   const r = await fetch(ghUrl(path), { method: 'DELETE', headers: ghHeaders(), body: JSON.stringify({ message, sha, branch: GH.branch }) });
   if (!r.ok) throw await ghError(r);
 }
-function requireToken() { if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; } }
+// Kept for callers that still reference it; local mode no longer requires a token.
+function requireToken() { /* writes fall back to on-device storage when no token */ }
 
 // Save an edited note (overwrites the file with the textarea contents).
 async function saveNoteEdit(path, newText) {
-  requireToken();
   const cur = await ghGetFile(path);
   await ghPutFile(path, newText.trim() + '\n', `Edit ${path.split('/').pop()}`, cur ? cur.sha : undefined);
 }
 // Delete a project note and remove it from the manifest.
 async function deleteNoteAndUnlist(path) {
-  requireToken();
   const cur = await ghGetFile(path);
   if (cur) await ghDeleteFile(path, `Delete ${path.split('/').pop()}`, cur.sha);
   const m = await ghGetFile('data/manifest.json');
@@ -1076,34 +1078,22 @@ async function deleteNoteAndUnlist(path) {
   }
 }
 
-// Commit projects/<Title>.md and add it to data/manifest.json.
+// Create projects/<Title>.md and add it to data/manifest.json.
+// Uses the gh* helpers, so it works against GitHub or the on-device vault.
 async function commitNewProject(rawTitle, md) {
-  if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; }
   const safeTitle = rawTitle.replace(/[\\/:*?"<>|#]/g, '').trim();
   if (!safeTitle) throw new Error('The note needs a title.');
   const path = `projects/${safeTitle}.md`;
 
-  const head = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
-  if (head.ok) throw new Error('A project note with that name already exists.');
-  if (head.status !== 404) throw await ghError(head);
+  const existing = await ghGetFile(path);
+  if (existing) throw new Error('A project note with that name already exists.');
+  await ghPutFile(path, md, `Add project: ${safeTitle}`);
 
-  const put = await fetch(ghUrl(path), {
-    method: 'PUT', headers: ghHeaders(),
-    body: JSON.stringify({ message: `Add project: ${safeTitle}`, content: b64encode(md), branch: GH.branch }),
-  });
-  if (!put.ok) throw await ghError(put);
-
-  const mres = await fetch(ghUrl('data/manifest.json') + `?ref=${GH.branch}`, { headers: ghHeaders() });
-  if (!mres.ok) throw await ghError(mres);
-  const mjson = await mres.json();
-  const manifest = JSON.parse(b64decode(mjson.content));
+  const m = await ghGetFile('data/manifest.json');
+  const manifest = m ? JSON.parse(m.text) : { projects: [], inbox: [] };
   manifest.projects = manifest.projects || [];
   if (!manifest.projects.includes(path)) manifest.projects.push(path);
-  const mput = await fetch(ghUrl('data/manifest.json'), {
-    method: 'PUT', headers: ghHeaders(),
-    body: JSON.stringify({ message: `List project: ${safeTitle}`, content: b64encode(JSON.stringify(manifest, null, 2) + '\n'), sha: mjson.sha, branch: GH.branch }),
-  });
-  if (!mput.ok) throw await ghError(mput);
+  await ghPutFile('data/manifest.json', JSON.stringify(manifest, null, 2) + '\n', `List project: ${safeTitle}`, m ? m.sha : undefined);
   return safeTitle;
 }
 async function createProjectOnGitHub(form) {

@@ -5,6 +5,7 @@ project. It installs as an app on your phone, shows milestones and progress, and
 every project is a plain Markdown note you can edit by hand, in Obsidian, or with
 an AI. No backend, no accounts, no cost.
 
+- 📴 **Runs without GitHub** — works fully on your device with zero setup; connect GitHub only if you want to sync across devices
 - ✅ **Checkmarks on your phone** — tap milestones and tasks, saved instantly (works offline)
 - 🎯 **Milestones, progress bars & trends** — dated timelines, sparklines, an overview dashboard
 - 💵 **Budgets** — categorize spending from a bank CSV against monthly budgets
@@ -25,9 +26,12 @@ own data, on free hosting. To set one up:
    from a branch → `main` / `/ (root)` → Save**.
 3. **Open your app** at `https://<your-username>.github.io/<repo>/` and
    **Add to Home screen**.
-4. *(Optional)* To create/edit projects from your phone, tap **➕ New project →
-   GitHub connection** and paste a fine-grained token (see
-   [From inside the app](#from-inside-the-app)).
+4. **Start using it.** Projects, checkmarks, and money all save **on your
+   device** — no account or token needed.
+5. *(Optional)* To **sync across devices** or keep your notes as a Markdown /
+   Obsidian repo, tap **⚙ → GitHub connection** and paste a fine-grained token
+   (see [From inside the app](#from-inside-the-app)). Without it, your data lives
+   only on the device, so use this if you want a backup or multi-device sync.
 
 **Make it yours:** the app name and tagline come from
 [`data/manifest.json`](data/manifest.json) (`app` and `tagline`). The starter

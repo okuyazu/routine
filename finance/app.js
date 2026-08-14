@@ -3,6 +3,7 @@
  * Data lives in ../money/*.md : accounts.md, budget.md, and one YYYY-MM.md
  * ledger per month. Writes go straight to GitHub with the shared token. */
 
+window.VAULT_BASE = '../'; // base files (money/*.md) are served one level up from /finance/
 const el = (id) => document.getElementById(id);
 const view = el('view');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -26,8 +27,12 @@ async function ghError(res) {
   let extra = ''; try { extra = (await res.json()).message || ''; } catch { /* */ }
   return new Error(map[res.status] || `GitHub error ${res.status}. ${extra}`);
 }
-function requireToken() { if (!GH.token) { const e = new Error('no-token'); e.needToken = true; throw e; } }
+function requireToken() { /* writes fall back to on-device storage when no token */ }
 async function ghGetFile(path) {
+  if (!GH.token) { // local mode: read the on-device overlay, else the base file
+    const t = await vaultRead(path);
+    return t == null ? null : { sha: 'local', text: t };
+  }
   const r = await fetch(ghUrl(path) + `?ref=${GH.branch}`, { headers: ghHeaders() });
   if (r.status === 404) return null;
   if (!r.ok) throw await ghError(r);
@@ -35,6 +40,7 @@ async function ghGetFile(path) {
   return { sha: j.sha, text: b64decode(j.content) };
 }
 async function ghPutFile(path, text, message, sha) {
+  if (!GH.token) { await LV.set(path, text); return; } // local mode: save on device
   const body = { message, content: b64encode(text), branch: GH.branch };
   if (sha) body.sha = sha;
   const r = await fetch(ghUrl(path), { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
@@ -87,17 +93,18 @@ const parseLedger = (md) => parseTable(md).rows
 
 async function load() {
   const [acc, bud] = await Promise.all([
-    fetch(`../money/accounts.md${bust()}`).then((r) => r.ok ? r.text() : '').catch(() => ''),
-    fetch(`../money/budget.md${bust()}`).then((r) => r.ok ? r.text() : '').catch(() => ''),
+    vaultRead('money/accounts.md'),
+    vaultRead('money/budget.md'),
   ]);
-  ACCOUNTS = parseTable(acc).rows.map((r) => ({ name: r.account, type: r.type, balance: +r.balance || 0 }));
-  CATS = parseTable(bud).rows.map((r) => ({ category: r.category, monthly: +r.monthly || 0 }));
-  RULES = parseRules(bud);
-  const idx = await fetch(`../money/index.json${bust()}`).then((r) => r.ok ? r.json() : null).catch(() => null);
+  ACCOUNTS = parseTable(acc || '').rows.map((r) => ({ name: r.account, type: r.type, balance: +r.balance || 0 }));
+  CATS = parseTable(bud || '').rows.map((r) => ({ category: r.category, monthly: +r.monthly || 0 }));
+  RULES = parseRules(bud || '');
+  const idxText = await vaultRead('money/index.json');
+  let idx = null; try { idx = idxText ? JSON.parse(idxText) : null; } catch { idx = null; }
   let cand = (idx && Array.isArray(idx.months)) ? idx.months.slice() : [];
   if (!cand.includes(CUR_MONTH)) cand.push(CUR_MONTH); // always try the current month
   cand = [...new Set(cand)].sort();
-  const texts = await Promise.all(cand.map((m) => fetch(`../money/${m}.md${bust()}`).then((r) => r.ok ? r.text() : null).catch(() => null)));
+  const texts = await Promise.all(cand.map((m) => vaultRead(`money/${m}.md`)));
   LEDGERS = {};
   cand.forEach((m, i) => { if (texts[i] && /\|\s*date\s*\|/i.test(texts[i])) LEDGERS[m] = parseLedger(texts[i]); });
   MONTHS = Object.keys(LEDGERS).sort();

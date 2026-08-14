@@ -85,9 +85,10 @@
   <div class="sheet-backdrop" id="tokenSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="tokenSheetTitle">
       <div class="sheet-handle"></div>
-      <h2 id="tokenSheetTitle">Connect GitHub</h2>
-      <p class="muted">To create and edit projects from inside the app, paste a GitHub access token.
-        It's stored <strong>only on this device</strong> and never in the app or the repo.</p>
+      <h2 id="tokenSheetTitle">Connect GitHub (optional)</h2>
+      <p class="muted">The app already works fully on this device — nothing to set up. Connect GitHub only
+        if you want to <strong>sync across devices</strong> and keep your notes as a Markdown/Obsidian
+        repo. Paste a token; it's stored <strong>only on this device</strong>, never in the app or the repo.</p>
       <ol class="steps-num">
         <li>Open <strong>github.com → Settings → Developer settings → Fine-grained tokens</strong>.</li>
         <li>Repository access → <strong>Only select repositories → your benchmarks repo</strong>.</li>
@@ -191,6 +192,7 @@
     </div>
   </div>
 
+  <script src="store.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

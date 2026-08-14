@@ -118,8 +118,9 @@
   <div class="sheet-backdrop" id="tokenSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true">
       <div class="sheet-handle"></div>
-      <h2>Connect GitHub</h2>
-      <p class="muted">Saving accounts and transactions writes to your repo. Paste a fine-grained token
+      <h2>Connect GitHub (optional)</h2>
+      <p class="muted">Money already works fully on this device — nothing to set up. Connect GitHub only to
+        <strong>sync across devices</strong> and keep a Markdown repo. Paste a fine-grained token
         (Contents: Read and write, this repo only). Stored only on this device; shared with the Benchmarks app.</p>
       <input id="tkInput" type="password" placeholder="github_pat_…" spellcheck="false" autocomplete="off" />
       <div class="sheet-actions">
@@ -130,6 +131,7 @@
     </div>
   </div>
 
+  <script src="../store.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
