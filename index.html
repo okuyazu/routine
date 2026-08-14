@@ -22,6 +22,7 @@
     </div>
     <a class="icon-btn" href="finance/" aria-label="Money" title="Money" style="text-decoration:none">💵</a>
     <button class="icon-btn" id="inboxBtn" aria-label="Idea inbox" title="Idea inbox">💡<span class="badge" id="inboxCount" hidden>0</span></button>
+    <button class="icon-btn" id="installBtn" aria-label="Install app" title="Install app" hidden>⬇</button>
     <button class="icon-btn" id="syncBtn" aria-label="Sync progress" title="Sync progress">⟳</button>
   </header>
 
@@ -41,6 +42,27 @@
         <button class="btn ghost" id="closeSheet">Close</button>
       </div>
       <p class="muted small" id="copyHint"></p>
+    </div>
+  </div>
+
+  <!-- Install sheet -->
+  <div class="sheet-backdrop" id="installSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="installTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="installTitle">Install this app</h2>
+      <p class="muted">It installs straight from the browser — no app store, no account. It gets its own
+        icon, opens full-screen, and works offline. Your data stays private on this device.</p>
+      <button class="btn primary" id="installNowBtn" hidden style="width:100%;margin:8px 0 4px">Install now</button>
+      <div id="installSteps">
+        <p class="muted small" id="installAndroid"><strong>Android (Chrome):</strong> tap the <strong>⋮</strong> menu → <strong>Install app</strong> (or “Add to Home screen”).</p>
+        <p class="muted small" id="installIos"><strong>iPhone / iPad (Safari):</strong> tap <strong>Share</strong> (□↑) → <strong>Add to Home Screen</strong>.</p>
+        <p class="muted small" id="installDesktop"><strong>Desktop (Chrome/Edge):</strong> click the <strong>install icon</strong> (⊕ / monitor with ↓) at the right of the address bar.</p>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="shareLinkBtn" style="flex:1">Send link to a friend</button>
+        <button class="btn ghost" id="closeInstall" style="flex:1">Close</button>
+      </div>
+      <p class="muted small" id="installHint"></p>
     </div>
   </div>
 

@@ -1614,3 +1614,51 @@ if ('serviceWorker' in navigator) {
       .catch(() => {});
   });
 }
+
+/* ---------- install helper (share + one-tap install) ---------- */
+(function () {
+  const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  let deferredPrompt = null;
+  const btn = el('installBtn');
+  // Chrome/Edge fire this when the app is installable — stash it for one-tap install.
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    el('installNowBtn').hidden = false;
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    if (btn) btn.hidden = true;
+    el('installSheet').hidden = true;
+  });
+  // Show the "how to install" entry to everyone who hasn't installed here yet
+  // (covers iOS, where there's no install event, with manual steps).
+  if (btn && !isStandalone()) btn.hidden = false;
+
+  const openInstall = () => {
+    el('installNowBtn').hidden = !deferredPrompt;
+    el('installHint').textContent = '';
+    el('installSheet').hidden = false;
+  };
+  if (btn) btn.addEventListener('click', openInstall);
+  el('closeInstall').addEventListener('click', () => { el('installSheet').hidden = true; });
+  el('installSheet').addEventListener('click', (e) => { if (e.target === el('installSheet')) el('installSheet').hidden = true; });
+
+  el('installNowBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) { el('installHint').textContent = 'Use the steps below to add it to your home screen.'; return; }
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch { /* ignore */ }
+    deferredPrompt = null;
+    el('installNowBtn').hidden = true;
+  });
+
+  el('shareLinkBtn').addEventListener('click', async () => {
+    const url = location.href.split('#')[0];
+    const data = { title: 'My Benchmarks', text: 'A private tracker you can install — no account needed.', url };
+    try {
+      if (navigator.share) { await navigator.share(data); return; }
+      await navigator.clipboard.writeText(url);
+      el('installHint').textContent = 'Link copied — paste it to a friend.';
+    } catch { el('installHint').textContent = url; }
+  });
+})();
