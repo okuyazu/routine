@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.okuyazu.twa",
+      "sha256_cert_fingerprints": [
+        "A0:0C:13:8A:05:37:E6:30:18:F8:AA:27:88:47:36:DD:B6:6D:25:FA:FE:64:65:67:4A:86:EB:DA:E7:49:5B:15"
+      ]
+    }
+  }
+]
