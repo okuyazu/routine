@@ -1,10 +1,7 @@
 {
   "app": "My Benchmarks",
   "tagline": "Personal milestones & progress",
-  "projects": [
-    "projects/Example Goal.md",
-    "projects/Monthly Budget.md"
-  ],
+  "projects": [],
   "inbox": [
     "inbox/Welcome.md"
   ]
