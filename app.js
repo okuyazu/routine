@@ -1402,10 +1402,43 @@ function openSheet(title, intro, text) {
 function closeSheet() { el('sheet').hidden = true; }
 
 function openSync() {
-  openSheet(
-    'Sync progress',
-    'Your checkmarks are saved on this device. To save them permanently (and share across devices), copy the snapshot below and paste it to Claude or ChatGPT, asking it to update the project files in your repo.',
-    buildSnapshot());
+  el('sheetTitle').textContent = 'Backup & sync';
+  el('syncOut').value = buildSnapshot();
+  el('copyHint').textContent = '';
+  el('vaultHint').textContent = '';
+  el('sheet').hidden = false;
+}
+
+/* ---------- vault export / import (offline cross-device sync) ---------- */
+async function doExportVault() {
+  el('vaultHint').textContent = 'Preparing…';
+  try {
+    const json = await exportVault((META && META.app) || 'My Benchmarks');
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `mybenchmarks-vault-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    el('vaultHint').textContent = 'Saved to your device. Send that file to another device, then Import it there.';
+  } catch (e) { el('vaultHint').textContent = '⚠︎ ' + (e.message || e); }
+}
+async function doImportVault(file) {
+  const rd = new FileReader();
+  rd.onload = async () => {
+    try {
+      const bundle = JSON.parse(String(rd.result));
+      const when = bundle.exportedAt ? new Date(bundle.exportedAt).toLocaleString() : 'an unknown date';
+      if (!confirm(`Import this vault (exported ${when})?\n\nIt merges into what's on this device, keeping the newest version of each note.`)) return;
+      el('vaultHint').textContent = 'Merging…';
+      const r = await importVault(bundle, 'merge');
+      el('vaultHint').textContent = `Done — ${r.added} added, ${r.updated} updated, ${r.deleted} removed, ${r.kept} unchanged.`;
+      await loadData(); router();
+    } catch (err) { el('vaultHint').textContent = '⚠︎ ' + (err.message || err); }
+    finally { el('importVaultFile').value = ''; }
+  };
+  rd.readAsText(file);
 }
 
 /* ---------- boot ---------- */
@@ -1432,6 +1465,9 @@ window.addEventListener('hashchange', router);
 el('backBtn').addEventListener('click', () => { location.hash = el('backBtn').dataset.target || ''; });
 el('inboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
 el('syncBtn').addEventListener('click', openSync);
+el('exportVaultBtn').addEventListener('click', doExportVault);
+el('importVaultBtn').addEventListener('click', () => el('importVaultFile').click());
+el('importVaultFile').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) doImportVault(f); });
 el('closeSheet').addEventListener('click', closeSheet);
 el('sheet').addEventListener('click', (e) => { if (e.target === el('sheet')) closeSheet(); });
 el('copyBtn').addEventListener('click', async () => {

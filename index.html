@@ -28,20 +28,33 @@
 
   <main id="view" class="view"></main>
 
-  <!-- Sync sheet -->
+  <!-- Backup & sync sheet -->
   <div class="sheet-backdrop" id="sheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
       <div class="sheet-handle"></div>
-      <h2 id="sheetTitle">Sync progress</h2>
-      <p class="muted" id="sheetIntro">Your checkmarks are saved on this device. To save them permanently
-        (and share across devices), copy the snapshot below and paste it to Claude or ChatGPT,
-        asking it to update the project files in your repo.</p>
-      <textarea id="syncOut" readonly rows="8" spellcheck="false"></textarea>
+      <h2 id="sheetTitle">Backup &amp; sync</h2>
+      <p class="muted">Move everything between phone, PC and laptop — no account, no cloud. <strong>Export</strong>
+        a single file, send it however you like (USB, Bluetooth, Nearby&nbsp;Share, AirDrop…), then
+        <strong>Import</strong> it on the other device. Import <em>merges</em>, keeping the newest version of
+        each note. It's also your backup.</p>
       <div class="sheet-actions">
-        <button class="btn primary" id="copyBtn">Copy snapshot</button>
-        <button class="btn ghost" id="closeSheet">Close</button>
+        <button class="btn primary" id="exportVaultBtn">⬆ Export vault</button>
+        <button class="btn ghost" id="importVaultBtn">⬇ Import vault</button>
       </div>
-      <p class="muted small" id="copyHint"></p>
+      <input id="importVaultFile" type="file" accept="application/json,.json" hidden />
+      <p class="muted small" id="vaultHint"></p>
+
+      <details style="margin-top:14px">
+        <summary class="muted small" style="cursor:pointer">Advanced: copy a text snapshot (for AI / GitHub)</summary>
+        <p class="muted small" id="sheetIntro" style="margin-top:8px">Copy the snapshot and paste it to Claude or ChatGPT, asking it to update the project files in your repo.</p>
+        <textarea id="syncOut" readonly rows="6" spellcheck="false"></textarea>
+        <div class="sheet-actions"><button class="btn ghost" id="copyBtn">Copy snapshot</button></div>
+        <p class="muted small" id="copyHint"></p>
+      </details>
+
+      <div class="sheet-actions" style="margin-top:12px">
+        <button class="btn ghost" id="closeSheet" style="width:100%">Close</button>
+      </div>
     </div>
   </div>
 
