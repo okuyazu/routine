@@ -1704,8 +1704,14 @@ el('editSave').addEventListener('click', async () => {
   btn.disabled = true; el('editHint').classList.remove('err'); el('editHint').textContent = 'Saving…';
   try {
     await saveNoteEdit(editingPath, el('editArea').value);
-    el('editHint').textContent = '✓ Saved. Changes appear after GitHub publishes (~1 min).';
-    setTimeout(() => { el('editSheet').hidden = true; }, 2400);
+    if (window.isLocalMode()) {
+      el('editHint').textContent = '✓ Saved.';
+      await loadData();
+      el('editSheet').hidden = true; router();
+    } else {
+      el('editHint').textContent = '✓ Saved. Changes appear after GitHub publishes (~1 min).';
+      setTimeout(() => { el('editSheet').hidden = true; }, 2400);
+    }
   } catch (e) {
     if (e.needToken) { el('editSheet').hidden = true; openTokenSheet('Connect GitHub once, then edit your project.'); }
     else { el('editHint').textContent = '⚠︎ ' + e.message; el('editHint').classList.add('err'); }
