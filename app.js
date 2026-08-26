@@ -935,6 +935,7 @@ function renderDetail(p) {
     ${p.path ? `<div class="detail-actions">
       <button class="btn ghost" id="importCsvBtn">⭳ Import CSV</button>
       <button class="btn ghost" id="editNoteBtn">✎ Edit note</button>
+      <button class="btn ghost danger" id="deleteProjectBtn">🗑 Delete</button>
     </div>` : ''}
   `;
 
@@ -976,6 +977,19 @@ function renderDetail(p) {
   });
   el('editNoteBtn')?.addEventListener('click', () => openNoteEditor(p));
   el('importCsvBtn')?.addEventListener('click', () => openImportSheet(p));
+  el('deleteProjectBtn')?.addEventListener('click', async () => {
+    const btn = el('deleteProjectBtn');
+    if (!confirm(`Delete “${p.title}”? This can't be undone.`)) return;
+    btn.disabled = true; btn.textContent = 'Deleting…';
+    try {
+      await deleteNoteAndUnlist(p.path);
+      await loadData();
+      location.hash = ''; router();
+    } catch (e) {
+      if (e.needToken) openTokenSheet('Connect GitHub once to delete this project.');
+      else { btn.disabled = false; btn.textContent = '🗑 Delete'; alert('Couldn’t delete: ' + (e.message || e)); }
+    }
+  });
 }
 
 /* ---------- edit / delete a project note ---------- */
@@ -1634,8 +1648,9 @@ el('editDelete').addEventListener('click', async () => {
   btn.disabled = true; el('editHint').classList.remove('err'); el('editHint').textContent = 'Deleting…';
   try {
     await deleteNoteAndUnlist(editingPath);
-    el('editHint').textContent = '✓ Deleted. It disappears after GitHub publishes (~1 min).';
-    setTimeout(() => { el('editSheet').hidden = true; location.hash = ''; }, 2000);
+    el('editHint').textContent = window.isLocalMode() ? '✓ Deleted.' : '✓ Deleted. It disappears after GitHub publishes (~1 min).';
+    if (window.isLocalMode()) await loadData();
+    setTimeout(() => { el('editSheet').hidden = true; location.hash = ''; router(); }, window.isLocalMode() ? 500 : 1500);
   } catch (e) {
     if (e.needToken) { el('editSheet').hidden = true; openTokenSheet('Connect GitHub once to delete this project.'); }
     else { el('editHint').textContent = '⚠︎ ' + e.message; el('editHint').classList.add('err'); btn.textContent = 'Delete project'; editDeleteArmed = false; }
