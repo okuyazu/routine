@@ -45,11 +45,22 @@ function isoWeek(d) {
   const wk = Math.ceil(((t - ys) / 86400000 + 1) / 7);
   return `${t.getUTCFullYear()}-W${String(wk).padStart(2, '0')}`;
 }
-function periodKey(cadence) {
-  const d = new Date();
+function periodKeyFor(cadence, d) {
   if (/daily/i.test(cadence)) return d.toISOString().slice(0, 10);
   if (/monthly/i.test(cadence)) return d.toISOString().slice(0, 7);
   return isoWeek(d); // weekly (default)
+}
+function periodKey(cadence) { return periodKeyFor(cadence, new Date()); }
+// The last k period keys for a cadence, oldest → newest (includes the current one).
+function recentPeriods(cadence, k) {
+  const out = []; const d = new Date();
+  for (let i = 0; i < k; i++) {
+    out.push(periodKeyFor(cadence, d));
+    if (/daily/i.test(cadence)) d.setDate(d.getDate() - 1);
+    else if (/monthly/i.test(cadence)) d.setMonth(d.getMonth() - 1);
+    else d.setDate(d.getDate() - 7);
+  }
+  return out.reverse();
 }
 function isRecurring(cadence) { return /^(daily|weekly|monthly)$/i.test(cadence || ''); }
 function getCount(projId, itemId, cadence) {
@@ -59,6 +70,46 @@ function getCount(projId, itemId, cadence) {
 function setCount(projId, itemId, cadence, n) {
   (counts[projId] ||= {})[itemId] = { p: periodKey(cadence), n };
   try { localStorage.setItem(COUNT_KEY, JSON.stringify(counts)); } catch { /* ignore */ }
+}
+
+/* ---------- per-period history + streaks (for recurring quota items) ---------- */
+const HISTORY_KEY = 'benchmarks:history:v1';
+let history = (() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || {}; } catch { return {}; } })();
+function saveHistory() { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { /* ignore */ } }
+function recordPeriod(projId, itemId, period, n, target) {
+  const it = ((history[projId] ||= {})[itemId] ||= {});
+  if (!(period in it)) { it[period] = { n: round2(n), target }; saveHistory(); }
+}
+function periodValue(p, c, period) {
+  if (period === periodKey(c.cadence)) return getCount(p.id, c.id, c.cadence);
+  const h = history[p.id] && history[p.id][c.id] && history[p.id][c.id][period];
+  return h ? h.n : 0;
+}
+function periodRecorded(p, c, period) {
+  return period === periodKey(c.cadence) || !!(history[p.id] && history[p.id][c.id] && (period in history[p.id][c.id]));
+}
+// On open in a new period, archive the just-closed period's tally so streaks survive the reset.
+function sweepClosedPeriods() {
+  let changed = false;
+  for (const p of (PROJECTS || [])) for (const c of (p.checklist || [])) {
+    if (!isRecurring(c.cadence)) continue;
+    const e = counts[p.id] && counts[p.id][c.id];
+    if (e && e.p !== periodKey(c.cadence)) {
+      recordPeriod(p.id, c.id, e.p, e.n, c.count || 1);
+      delete counts[p.id][c.id]; changed = true;
+    }
+  }
+  if (changed) { try { localStorage.setItem(COUNT_KEY, JSON.stringify(counts)); } catch { /* ignore */ } }
+}
+function streakOf(p, c) {
+  let s = 0;
+  for (const pk of recentPeriods(c.cadence, 60).reverse()) { // newest → oldest
+    const isCur = pk === periodKey(c.cadence);
+    const met = periodValue(p, c, pk) >= (c.count || 1);
+    if (isCur && !met) continue;                 // a current period still in progress doesn't break it
+    if (met && periodRecorded(p, c, pk)) s++; else break;
+  }
+  return s;
 }
 // Effective state of a checklist item: recurring items use the per-period
 // counter; one-time items use the boolean overlay.
@@ -438,6 +489,7 @@ async function loadData() {
   el('appTitle').textContent = manifest.app || 'My Benchmarks';
   el('appTagline').textContent = manifest.tagline || '';
   document.title = manifest.app || 'My Benchmarks';
+  sweepClosedPeriods(); // archive any weeks/months that closed since last open
 }
 
 function updateInboxBadge() {
@@ -912,12 +964,29 @@ function renderDetail(p) {
     const st = checklistState(p, c);
     const showPill = st.recurring && (c.mode === 'sum' || st.target > 1);
     const pillText = `${round2(st.n)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}`;
+    let streakHtml = '';
+    if (st.recurring) {
+      const cur = periodKey(c.cadence);
+      const dotsP = recentPeriods(c.cadence, 6);
+      const hasClosed = dotsP.some((pk) => pk !== cur && periodRecorded(p, c, pk));
+      if (hasClosed) {
+        const dots = dotsP.map((pk) => {
+          const isCur = pk === cur, val = periodValue(p, c, pk), met = val >= (c.count || 1);
+          const cls = isCur ? (met ? 'hit' : 'now') : (periodRecorded(p, c, pk) ? (met ? 'hit' : 'miss') : 'none');
+          const sym = cls === 'hit' ? '●' : cls === 'miss' ? '○' : cls === 'now' ? '◐' : '·';
+          return `<span class="d ${cls}" title="${esc(pk)} — ${round2(val)}/${c.count || 1}">${sym}</span>`;
+        }).join('');
+        const s = streakOf(p, c);
+        const per = /daily/i.test(c.cadence) ? 'd' : /monthly/i.test(c.cadence) ? 'mo' : 'wk';
+        streakHtml = `<div class="streak"><span class="flame">${s > 0 ? '🔥 ' + s + ' ' + per : 'streak 0'}</span><span class="dots">${dots}</span></div>`;
+      }
+    }
     return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
       ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''}">${pillText}</span>` : ''}
       ${c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : ''}
-    </div>`;
+    </div>${streakHtml}`;
   }).join('');
 
   view.innerHTML = `

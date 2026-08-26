@@ -62,7 +62,7 @@
     return served(path);
   }
 
-  const OVERLAY_KEYS = ['benchmarks:state:v1', 'benchmarks:counts:v1', 'benchmarks:captures:v1'];
+  const OVERLAY_KEYS = ['benchmarks:state:v1', 'benchmarks:counts:v1', 'benchmarks:captures:v1', 'benchmarks:history:v1'];
 
   // Every path that could hold vault content (base files + everything local).
   async function allPaths() {
@@ -129,6 +129,23 @@
     };
     mergeMap('benchmarks:state:v1');
     mergeMap('benchmarks:counts:v1');
+    // Weekly/period history: deep-union (proj → item → period), never lose a recorded period.
+    if (ov['benchmarks:history:v1'] != null) {
+      if (replace) localStorage.setItem('benchmarks:history:v1', ov['benchmarks:history:v1']);
+      else {
+        let inc = {}, loc = {};
+        try { inc = JSON.parse(ov['benchmarks:history:v1']) || {}; } catch { inc = {}; }
+        try { loc = JSON.parse(localStorage.getItem('benchmarks:history:v1') || '{}') || {}; } catch { /* */ }
+        for (const proj in inc) {
+          loc[proj] = loc[proj] || {};
+          for (const item in inc[proj]) {
+            loc[proj][item] = loc[proj][item] || {};
+            for (const per in inc[proj][item]) if (!(per in loc[proj][item])) loc[proj][item][per] = inc[proj][item][per];
+          }
+        }
+        localStorage.setItem('benchmarks:history:v1', JSON.stringify(loc));
+      }
+    }
     if (ov['benchmarks:captures:v1'] != null) {
       if (replace) localStorage.setItem('benchmarks:captures:v1', ov['benchmarks:captures:v1']);
       else {
