@@ -219,6 +219,28 @@ function parseMetrics(sectionText) {
   }
   return metrics;
 }
+// Recover structure from a note whose Markdown lost its line breaks / markers
+// (e.g. pasted from an AI's *rendered* answer instead of the raw code block).
+// Re-inserts "## " section headings and "- [ ]" list lines from surviving signals.
+function reflow(md) {
+  let t = (md || '').replace(/\r/g, '');
+  t = t.replace(/(^|[\s>.,;])(Progress|Milestones|Checklist|History|Rules)\b\s*:?\s+/g, '$1\n\n## $2\n');
+  t = t.replace(/\s*\[\s*([xX])?\s*\]\s*/g, (m, x) => `\n- [${x ? 'x' : ' '}] `);
+  return t.replace(/\n{3,}/g, '\n\n').trim();
+}
+// Expand a run of inline "Label: a / b / c unit" metrics into one "- " line each.
+function reflowMetrics(txt) {
+  if (!txt) return txt;
+  const re = /([^:\n]+?):\s*(-?[\d.]+)\s*\/\s*(-?[\d.]+)\s*\/\s*(-?[\d.]+)\s*([A-Za-z%°µ฿$]+(?:\/[A-Za-z]+)?)?/g;
+  const out = []; let m, found = false;
+  while ((m = re.exec(txt))) {
+    found = true;
+    const label = m[1].replace(/^[-\s]+/, '').trim();
+    const unit = (m[5] || '').trim();
+    out.push(`- ${label}: ${m[2]} / ${m[3]} / ${m[4]}${unit ? ' ' + unit : ''}`);
+  }
+  return found ? out.join('\n') : txt;
+}
 function fileTitle(path) {
   return path ? path.split('/').pop().replace(/\.md$/i, '') : '';
 }
@@ -1123,7 +1145,17 @@ function parseLoose(md) {
       .filter((l) => !/^\s*(id|title|emoji|color|target)\s*:/i.test(l) && !/^\s*---\s*$/.test(l))
       .join('\n');
   }
-  const { intro, sections } = splitSections(body.trim());
+  let split = splitSections(body.trim());
+  // If nothing structured was found, the paste probably lost its formatting —
+  // try to rebuild the sections before giving up.
+  if (!split.sections.progress && !split.sections.milestones && !split.sections.checklist && !split.sections.history) {
+    const alt = splitSections(reflow(body));
+    if (alt.sections.progress || alt.sections.milestones || alt.sections.checklist) {
+      alt.sections.progress = reflowMetrics(alt.sections.progress);
+      split = alt;
+    }
+  }
+  const { intro, sections } = split;
   return {
     id, title, emoji, color, target,
     description: intro.replace(/^#\s+.+\n?/, '').trim(),
@@ -1167,7 +1199,7 @@ async function createProjectFromMarkdown(md) {
 }
 // Prompt the user pastes at the end of any AI chat to get a ready-to-file note.
 const CONVERT_PROMPT =
-`Turn our conversation into ONE project for my "Benchmarks" app. Output only a Markdown note — no commentary — in exactly this format:
+`Turn our conversation into ONE project for my "Benchmarks" app. Reply with ONLY the note — no commentary — and put it inside a single fenced \`\`\`markdown code block so I can copy it with the block's copy button (copying the formatted text loses the headings and checkboxes). Use exactly this format:
 
 ---
 id: short-slug
