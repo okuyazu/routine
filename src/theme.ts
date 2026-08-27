@@ -2,29 +2,40 @@
  * theme.ts
  * -------------------------------------------------------------
  * One central place for colors, spacing, and text sizes.
- * Keeping these here (instead of hard-coding "#4B3F72" all over
- * the app) means you can restyle the whole app by editing ONE file.
+ * Editing this ONE file restyles the whole app.
+ *
+ * LID (Living in Data) uses a calm, clinical palette: deep ink,
+ * a clinical teal accent, and warm paper backgrounds. Status
+ * colors are intentionally muted — this is an evidence system,
+ * not a scoreboard.
  */
 
 export const colors = {
   // Backgrounds
-  background: '#F6F4EF', // warm paper-like background
+  background: '#F4F6F6', // cool clinical paper
   surface: '#FFFFFF', // cards
-  surfaceAlt: '#EFEBE2',
+  surfaceAlt: '#E8EDED',
 
-  // Brand / accents (a calm, scholarly purple + gold)
-  primary: '#4B3F72',
-  primaryDark: '#362C57',
-  accent: '#C9A227',
+  // Brand / accents (clinical teal + deep ink)
+  primary: '#0E6E6E',
+  primaryDark: '#0A5252',
+  accent: '#1F7A8C',
 
   // Text
-  text: '#1F1B2E',
-  textMuted: '#6B6577',
+  text: '#12211F',
+  textMuted: '#5C6B69',
   textOnPrimary: '#FFFFFF',
+
+  // Status bands (used for measurement/engine states — muted on purpose)
+  optimal: '#0E7C5A', // longevity / optimal band
+  ok: '#3A7CA5', // within guideline target
+  watch: '#B7791F', // above guideline
+  high: '#B3402A', // high / diagnostic concern
+  unknown: '#7A7A7A', // legitimately UNKNOWN
 
   // Feedback
   danger: '#B3261E',
-  border: '#E3DED3',
+  border: '#DDE4E3',
 };
 
 // A consistent spacing scale (multiples of 4). Use spacing.md, spacing.lg, etc.
@@ -38,6 +49,7 @@ export const spacing = {
 
 // Text sizes used across the app.
 export const fontSize = {
+  xs: 11,
   sm: 13,
   md: 15,
   lg: 18,

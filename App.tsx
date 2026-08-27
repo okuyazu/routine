@@ -1,9 +1,9 @@
 /**
  * App.tsx
  * -------------------------------------------------------------
- * The app's entry point. It does three things:
- *   1. Wraps everything in <ConceptsProvider> so every screen can
- *      read/modify the concept list.
+ * The app's entry point for the LID (Living in Data) Phase-1 mockup.
+ *   1. Wraps everything in <LidProvider> so every screen can read/modify
+ *      subjects, measurements, and engine evaluations.
  *   2. Sets up navigation (the stack of screens you push/pop).
  *   3. Styles the top navigation bar.
  */
@@ -15,35 +15,28 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from './src/navigation';
-import { ConceptsProvider } from './src/ConceptsContext';
-import { PremiumProvider } from './src/premium';
-import { ProgressProvider } from './src/progress';
-import { JournalProvider } from './src/journal';
+import { LidProvider } from './src/LidContext';
 import { colors } from './src/theme';
 
 import HomeScreen from './screens/HomeScreen';
-import LibraryScreen from './screens/LibraryScreen';
-import AddConceptScreen from './screens/AddConceptScreen';
-import ConceptDetailScreen from './screens/ConceptDetailScreen';
-import ReviewScreen from './screens/ReviewScreen';
-import ReflectScreen from './screens/ReflectScreen';
+import CreateSubjectScreen from './screens/CreateSubjectScreen';
+import AddMeasurementScreen from './screens/AddMeasurementScreen';
+import LipidResultScreen from './screens/LipidResultScreen';
+import MeasurementHistoryScreen from './screens/MeasurementHistoryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <PremiumProvider>
-      <ProgressProvider>
-      <JournalProvider>
-      <ConceptsProvider>
+      <LidProvider>
         <NavigationContainer>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
           <Stack.Navigator
             screenOptions={{
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.primary,
-              headerTitleStyle: { color: colors.text },
+              headerStyle: { backgroundColor: colors.primary },
+              headerTintColor: colors.textOnPrimary,
+              headerTitleStyle: { color: colors.textOnPrimary },
               headerShadowVisible: false,
               contentStyle: { backgroundColor: colors.background },
             }}
@@ -55,36 +48,28 @@ export default function App() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
-              name="Library"
-              component={LibraryScreen}
-              options={{ title: 'Library' }}
+              name="CreateSubject"
+              component={CreateSubjectScreen}
+              options={{ title: 'New subject' }}
             />
             <Stack.Screen
-              name="AddConcept"
-              component={AddConceptScreen}
-              options={{ title: 'Add concept' }}
+              name="AddMeasurement"
+              component={AddMeasurementScreen}
+              options={{ title: 'Add measurement' }}
             />
             <Stack.Screen
-              name="ConceptDetail"
-              component={ConceptDetailScreen}
-              options={{ title: 'Concept' }}
+              name="LipidResult"
+              component={LipidResultScreen}
+              options={{ title: 'Lipid evaluation' }}
             />
             <Stack.Screen
-              name="Review"
-              component={ReviewScreen}
-              options={{ title: 'Review' }}
-            />
-            <Stack.Screen
-              name="Reflect"
-              component={ReflectScreen}
-              options={{ title: 'Reflect' }}
+              name="MeasurementHistory"
+              component={MeasurementHistoryScreen}
+              options={{ title: 'Measurement history' }}
             />
           </Stack.Navigator>
         </NavigationContainer>
-      </ConceptsProvider>
-      </JournalProvider>
-      </ProgressProvider>
-      </PremiumProvider>
+      </LidProvider>
     </SafeAreaProvider>
   );
 }

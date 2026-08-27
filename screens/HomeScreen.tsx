@@ -1,17 +1,19 @@
 /**
  * HomeScreen.tsx
  * -------------------------------------------------------------
- * The first screen you see: your library of concepts.
- * - Shows each concept as a tappable card.
- * - A "+ Add concept" button opens the Add screen.
- * - Empty state guides a first-time user.
+ * The "Current State" dashboard — the first screen you see.
+ *
+ * Phase-1 job: for the active subject, show the ApoB / lipid engine
+ * result and the source measurements behind it. Everything here is
+ * evidence-backed; there is deliberately NO global longevity score,
+ * NO biological age, and NO lifespan estimate.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -19,180 +21,208 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../src/navigation';
-import { useConcepts } from '../src/ConceptsContext';
-import { useProgress, cardKeyOf } from '../src/progress';
+import { useLid } from '../src/LidContext';
+import { PARAMETERS, getParameter } from '../src/parameters';
 import { colors, spacing, fontSize, radius } from '../src/theme';
-import { Concept } from '../src/types';
-
-/** All spaced-repetition card keys for a concept. */
-function keysFor(concept: Concept): string[] {
-  return (concept.flashcards ?? []).map((f) => cardKeyOf(concept.title, f.front));
-}
+import { bandColor, bandLabel, formatDate, num } from '../src/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
+const LIPID_KEYS = PARAMETERS.filter((p) => p.family === 'Lipid').map((p) => p.key);
+
 export default function HomeScreen({ navigation }: Props) {
-  const { concepts, loading } = useConcepts();
-  const { streak, learnedOf, dueCount } = useProgress();
+  const {
+    loading,
+    activeSubject,
+    subjects,
+    effectiveEvents,
+    latestLipid,
+    runLipid,
+  } = useLid();
 
-  // Overall progress across every saved concept's flashcards.
-  const allKeys = concepts.flatMap(keysFor);
-  const overall = learnedOf(allKeys);
-  const due = dueCount(allKeys);
+  // Auto-run the lipid engine once when we have a subject but no evaluation,
+  // so the dashboard always shows a current, reproducible result.
+  useEffect(() => {
+    if (!loading && activeSubject && !latestLipid) runLipid();
+  }, [loading, activeSubject, latestLipid, runLipid]);
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Philosophy</Text>
-        <Text style={styles.subtitle}>Your personal library</Text>
-      </View>
-
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Library')}
-        >
-          <Text style={styles.actionBtnText}>📚 Browse library</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Review', {})}
-        >
-          <Text style={styles.actionBtnText}>🎴 Quiz</Text>
-        </TouchableOpacity>
-      </View>
-
-      {loading ? (
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
-      ) : concepts.length === 0 ? (
-        <EmptyState onBrowse={() => navigation.navigate('Library')} />
-      ) : (
-        <FlatList
-          data={concepts}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={
-            allKeys.length > 0 ? (
-              <StatsBanner
-                streak={streak}
-                learned={overall.learned}
-                total={overall.total}
-                due={due}
-              />
-            ) : null
-          }
-          renderItem={({ item }) => (
-            <ConceptCard
-              concept={item}
-              learned={learnedOf(keysFor(item))}
-              onPress={() => navigation.navigate('ConceptDetail', { id: item.id })}
-            />
-          )}
-        />
-      )}
+      </SafeAreaView>
+    );
+  }
 
-      {/* Floating add button */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate('AddConcept')}
-      >
-        <Text style={styles.fabText}>+  Add concept</Text>
-      </TouchableOpacity>
+  if (!activeSubject) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <Header subjectCount={subjects.length} />
+        <EmptyState onCreate={() => navigation.navigate('CreateSubject')} />
+      </SafeAreaView>
+    );
+  }
+
+  const apobEffective = effectiveEvents('apob');
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <Header subjectCount={subjects.length} />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {/* Subject line */}
+        <View style={styles.subjectRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.subjectName}>{activeSubject.name}</Text>
+            <Text style={styles.subjectMeta}>
+              {activeSubject.sex}
+              {activeSubject.birthYear ? ` · b. ${activeSubject.birthYear}` : ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.switchBtn}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('CreateSubject')}
+          >
+            <Text style={styles.switchText}>Subjects</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Primary Phase-1 output: the Lipid / ApoB evaluation card */}
+        <Text style={styles.sectionTitle}>Current state · Lipid family</Text>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.resultCard}
+          onPress={() => navigation.navigate('LipidResult')}
+        >
+          {latestLipid ? (
+            <>
+              <View style={styles.bandRow}>
+                <View
+                  style={[styles.bandDot, { backgroundColor: bandColor(latestLipid.band) }]}
+                />
+                <Text style={[styles.bandLabel, { color: bandColor(latestLipid.band) }]}>
+                  {bandLabel(latestLipid.band)}
+                </Text>
+              </View>
+              {latestLipid.primaryValue != null ? (
+                <Text style={styles.bigValue}>
+                  {num(latestLipid.primaryValue)}
+                  <Text style={styles.bigUnit}> {latestLipid.primaryUnit}</Text>
+                  <Text style={styles.bigCaption}>  ApoB</Text>
+                </Text>
+              ) : (
+                <Text style={styles.bigValueUnknown}>ApoB — UNKNOWN</Text>
+              )}
+              <Text style={styles.interpretation}>{latestLipid.interpretation}</Text>
+              <Text style={styles.engineTag}>
+                {latestLipid.engineName} {latestLipid.engineVersion} · tap for evidence ›
+              </Text>
+            </>
+          ) : (
+            <ActivityIndicator color={colors.primary} />
+          )}
+        </TouchableOpacity>
+
+        {/* Source measurements */}
+        <Text style={styles.sectionTitle}>Source measurements</Text>
+        <View style={styles.card}>
+          {LIPID_KEYS.map((key, i) => {
+            const def = getParameter(key)!;
+            const eff = effectiveEvents(key)[0];
+            return (
+              <TouchableOpacity
+                key={key}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('MeasurementHistory', { parameterKey: key })}
+                style={[styles.paramRow, i > 0 && styles.paramRowBorder]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.paramName}>{def.name}</Text>
+                  {eff ? (
+                    <Text style={styles.paramMeta}>
+                      Sampled {formatDate(eff.sampleDate)}
+                      {eff.method ? ` · ${eff.method}` : ''}
+                    </Text>
+                  ) : (
+                    <Text style={styles.paramMetaMuted}>No measurement on record</Text>
+                  )}
+                </View>
+                {eff ? (
+                  <Text style={styles.paramValue}>
+                    {num(eff.normalizedValue)}{' '}
+                    <Text style={styles.paramUnit}>{eff.normalizedUnit}</Text>
+                  </Text>
+                ) : (
+                  <Text style={styles.paramUnknown}>—</Text>
+                )}
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {apobEffective.length === 0 && (
+          <Text style={styles.hint}>
+            No effective ApoB on record, so the lipid engine returns UNKNOWN. Add an
+            ApoB measurement to evaluate the family.
+          </Text>
+        )}
+
+        {/* Invariant footer — this is an evidence system, not a scoreboard. */}
+        <Text style={styles.invariants}>
+          LID shows evidence, not verdicts. No global longevity score, no biological-age
+          number, no lifespan estimate. Missing evidence stays UNKNOWN.
+        </Text>
+      </ScrollView>
+
+      {/* Actions */}
+      <View style={styles.fabRow}>
+        <TouchableOpacity
+          style={[styles.fab, styles.fabSecondary]}
+          activeOpacity={0.85}
+          onPress={() => runLipid()}
+        >
+          <Text style={styles.fabSecondaryText}>↻ Re-run engine</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.fab}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('AddMeasurement', {})}
+        >
+          <Text style={styles.fabText}>+  Add measurement</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
-/** A small progress dashboard shown above the concept list. */
-function StatsBanner({
-  streak,
-  learned,
-  total,
-  due,
-}: {
-  streak: number;
-  learned: number;
-  total: number;
-  due: number;
-}) {
+function Header({ subjectCount }: { subjectCount: number }) {
   return (
-    <View style={styles.stats}>
-      <View style={styles.statItem}>
-        <Text style={styles.statValue}>🔥 {streak}</Text>
-        <Text style={styles.statLabel}>day streak</Text>
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.appName}>LID</Text>
+        <Text style={styles.appTagline}>Living in Data · Current State</Text>
       </View>
-      <View style={styles.statDivider} />
-      <View style={styles.statItem}>
-        <Text style={styles.statValue}>
-          {learned}/{total}
-        </Text>
-        <Text style={styles.statLabel}>learned</Text>
-      </View>
-      <View style={styles.statDivider} />
-      <View style={styles.statItem}>
-        <Text style={styles.statValue}>{due}</Text>
-        <Text style={styles.statLabel}>due now</Text>
+      <View style={styles.phaseBadge}>
+        <Text style={styles.phaseText}>Phase 1</Text>
       </View>
     </View>
   );
 }
 
-/** A single row/card in the list. */
-function ConceptCard({
-  concept,
-  learned,
-  onPress,
-}: {
-  concept: Concept;
-  learned: { learned: number; total: number };
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{concept.title}</Text>
-        <Text style={styles.cardMeta}>{statusLabel(concept)}</Text>
-        {learned.total > 0 && (
-          <Text style={styles.cardMastery}>
-            🎴 {learned.learned}/{learned.total} cards learned
-          </Text>
-        )}
-      </View>
-      {concept.status === 'generating' && (
-        <ActivityIndicator color={colors.primary} />
-      )}
-      <Text style={styles.chevron}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
-function statusLabel(concept: Concept): string {
-  if (concept.status === 'generating') return 'Generating lesson…';
-  if (concept.status === 'error') return 'Tap to retry';
-  if (concept.content) return concept.content.summary;
-  return 'Ready';
-}
-
-/** Shown when the user has no concepts yet. */
-function EmptyState({ onBrowse }: { onBrowse: () => void }) {
+function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <View style={styles.center}>
-      <Text style={styles.emptyEmoji}>🏛️</Text>
-      <Text style={styles.emptyTitle}>Start your library</Text>
+      <Text style={styles.emptyEmoji}>🧬</Text>
+      <Text style={styles.emptyTitle}>Create a subject</Text>
       <Text style={styles.emptyBody}>
-        Browse the built-in library of great concepts, or add any concept of
-        your own — each comes with a lesson, key ideas, and practical points.
+        LID tracks longitudinal, versioned evidence for a subject. Start by creating
+        one, then enter numeric lab measurements — beginning with ApoB.
       </Text>
-      <TouchableOpacity
-        style={styles.emptyBrowseBtn}
-        activeOpacity={0.85}
-        onPress={onBrowse}
-      >
-        <Text style={styles.emptyBrowseText}>📚 Browse the library</Text>
+      <TouchableOpacity style={styles.emptyBtn} activeOpacity={0.85} onPress={onCreate}>
+        <Text style={styles.emptyBtnText}>Create subject</Text>
       </TouchableOpacity>
     </View>
   );
@@ -201,66 +231,137 @@ function EmptyState({ onBrowse }: { onBrowse: () => void }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   header: {
+    backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  title: { fontSize: fontSize.xxl, fontWeight: '700', color: colors.text },
-  subtitle: { fontSize: fontSize.md, color: colors.textMuted, marginTop: 2 },
-  actionsRow: {
+    paddingBottom: spacing.lg,
     flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  actionBtn: {
-    flex: 1,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md,
+  appName: {
+    fontSize: fontSize.xxl,
+    fontWeight: '800',
+    color: colors.textOnPrimary,
+    letterSpacing: 2,
+  },
+  appTagline: { fontSize: fontSize.sm, color: '#CDE6E6', marginTop: 2 },
+  phaseBadge: {
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  phaseText: { color: '#CDE6E6', fontSize: fontSize.xs, fontWeight: '700' },
+  scroll: { padding: spacing.lg, paddingBottom: 120, gap: spacing.md },
+
+  subjectRow: { flexDirection: 'row', alignItems: 'center' },
+  subjectName: { fontSize: fontSize.xl, fontWeight: '700', color: colors.text },
+  subjectMeta: { fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 },
+  switchBtn: {
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  actionBtnText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '600' },
-  list: { padding: spacing.lg, paddingBottom: 120, gap: spacing.md },
+  switchText: { color: colors.primary, fontWeight: '600', fontSize: fontSize.sm },
+
+  sectionTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: spacing.sm,
+  },
+
+  resultCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  bandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  bandDot: { width: 12, height: 12, borderRadius: 6 },
+  bandLabel: { fontSize: fontSize.md, fontWeight: '700' },
+  bigValue: { fontSize: 40, fontWeight: '800', color: colors.text },
+  bigUnit: { fontSize: fontSize.lg, fontWeight: '600', color: colors.textMuted },
+  bigCaption: { fontSize: fontSize.md, fontWeight: '600', color: colors.textMuted },
+  bigValueUnknown: { fontSize: fontSize.xxl, fontWeight: '800', color: colors.unknown },
+  interpretation: { fontSize: fontSize.md, color: colors.text, lineHeight: 21 },
+  engineTag: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: spacing.xs },
+
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    paddingHorizontal: spacing.md,
   },
-  cardTitle: { fontSize: fontSize.lg, fontWeight: '600', color: colors.text },
-  cardMeta: {
+  paramRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  paramRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  paramName: { fontSize: fontSize.md, fontWeight: '600', color: colors.text },
+  paramMeta: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 },
+  paramMetaMuted: { fontSize: fontSize.xs, color: colors.unknown, marginTop: 2 },
+  paramValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
+  paramUnit: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textMuted },
+  paramUnknown: { fontSize: fontSize.lg, color: colors.unknown },
+  chevron: { fontSize: 22, color: colors.textMuted, marginLeft: spacing.xs },
+
+  hint: {
     fontSize: fontSize.sm,
     color: colors.textMuted,
-    marginTop: 2,
+    fontStyle: 'italic',
+    lineHeight: 20,
   },
-  cardMastery: {
-    fontSize: fontSize.sm,
-    color: colors.accent,
-    fontWeight: '600',
-    marginTop: 4,
+  invariants: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    lineHeight: 18,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  stats: {
+
+  fabRow: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.lg,
+    right: spacing.lg,
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.md,
-    alignItems: 'center',
+    gap: spacing.sm,
   },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
-  statLabel: { fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 },
-  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
-  chevron: { fontSize: 26, color: colors.textMuted, marginLeft: spacing.xs },
+  fab: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  fabText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: '700' },
+  fabSecondary: {
+    flex: 0.8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  fabSecondaryText: { color: colors.primary, fontSize: fontSize.md, fontWeight: '700' },
+
   center: {
     flex: 1,
     alignItems: 'center',
@@ -280,35 +381,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  emptyBrowseBtn: {
+  emptyBtn: {
     marginTop: spacing.lg,
     backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     borderRadius: radius.lg,
   },
-  emptyBrowseText: {
-    color: colors.textOnPrimary,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-  },
-  fab: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    alignSelf: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  fabText: {
-    color: colors.textOnPrimary,
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-  },
+  emptyBtnText: { color: colors.textOnPrimary, fontSize: fontSize.md, fontWeight: '700' },
 });
