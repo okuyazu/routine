@@ -963,7 +963,9 @@ function renderDetail(p) {
   const checklist = (p.checklist || []).map((c) => {
     const st = checklistState(p, c);
     const showPill = st.recurring && (c.mode === 'sum' || st.target > 1);
-    const pillText = `${round2(st.n)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}`;
+    const over = st.raw > st.target;
+    const pct = st.target ? Math.round((st.raw / st.target) * 100) : 0;
+    const pillText = `${round2(st.raw)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}${over ? ' · ' + pct + '%' : ''}`;
     let streakHtml = '';
     if (st.recurring) {
       const cur = periodKey(c.cadence);
@@ -971,10 +973,12 @@ function renderDetail(p) {
       const hasClosed = dotsP.some((pk) => pk !== cur && periodRecorded(p, c, pk));
       if (hasClosed) {
         const dots = dotsP.map((pk) => {
-          const isCur = pk === cur, val = periodValue(p, c, pk), met = val >= (c.count || 1);
-          const cls = isCur ? (met ? 'hit' : 'now') : (periodRecorded(p, c, pk) ? (met ? 'hit' : 'miss') : 'none');
-          const sym = cls === 'hit' ? '●' : cls === 'miss' ? '○' : cls === 'now' ? '◐' : '·';
-          return `<span class="d ${cls}" title="${esc(pk)} — ${round2(val)}/${c.count || 1}">${sym}</span>`;
+          const isCur = pk === cur, val = periodValue(p, c, pk), tgt = c.count || 1;
+          const met = val >= tgt, over = val > tgt, rec = isCur || periodRecorded(p, c, pk);
+          const base = met ? 'hit' : (isCur ? 'now' : (rec ? 'miss' : 'none'));
+          const sym = base === 'hit' ? '●' : base === 'miss' ? '○' : base === 'now' ? '◐' : '·';
+          const tip = `${esc(pk)} — ${round2(val)}/${tgt}${over ? ' (' + Math.round(val / tgt * 100) + '%)' : ''}`;
+          return `<span class="d ${base}${over ? ' over' : ''}" title="${tip}">${sym}</span>`;
         }).join('');
         const s = streakOf(p, c);
         const per = /daily/i.test(c.cadence) ? 'd' : /monthly/i.test(c.cadence) ? 'mo' : 'wk';
@@ -984,7 +988,7 @@ function renderDetail(p) {
     return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
-      ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''}">${pillText}</span>` : ''}
+      ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''} ${over ? 'over' : ''}">${pillText}</span>` : ''}
       ${c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : ''}
     </div>${streakHtml}`;
   }).join('');
@@ -1676,12 +1680,14 @@ function quotaRefresh() {
   const { p, c, node } = quotaCtx;
   const st = checklistState(p, c);
   const noun = /daily/i.test(c.cadence) ? 'day' : /monthly/i.test(c.cadence) ? 'month' : 'week';
-  el('quotaSub').textContent = `${round2(st.n)} / ${st.target} ${c.unit || ''} this ${noun}`.replace(/\s+/g, ' ');
+  const over = st.raw > st.target;
+  const pct = st.target ? Math.round((st.raw / st.target) * 100) : 0;
+  el('quotaSub').textContent = `${round2(st.raw)} / ${st.target} ${c.unit || ''} this ${noun}${over ? ` · ${pct}% 🎉` : ''}`.replace(/\s+/g, ' ');
   const color = p.color || '#7c3aed';
   node.classList.toggle('on', st.done);
   const box = node.querySelector('.box'); box.style.background = st.done ? color : ''; box.style.borderColor = st.done ? color : '';
   const pill = node.querySelector('.count-pill');
-  if (pill) { pill.textContent = `${round2(st.n)}/${st.target}${c.unit ? ' ' + c.unit : ''}`; pill.classList.toggle('on', st.done); }
+  if (pill) { pill.textContent = `${round2(st.raw)}/${st.target}${c.unit ? ' ' + c.unit : ''}${over ? ' · ' + pct + '%' : ''}`; pill.classList.toggle('on', st.done); pill.classList.toggle('over', over); }
 }
 el('quotaAdd').addEventListener('click', () => {
   if (!quotaCtx) return;
