@@ -1526,6 +1526,28 @@ function openSync() {
   el('copyHint').textContent = '';
   el('vaultHint').textContent = '';
   el('sheet').hidden = false;
+  showVersion();
+}
+
+/* ---------- app version / update check ---------- */
+async function swVersion() {
+  const fallback = { version: 'v26', built: '2026-08-28' };
+  try {
+    if (!('serviceWorker' in navigator)) return fallback;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sw = navigator.serviceWorker.controller || (reg && reg.active);
+    if (!sw) return fallback;
+    return await new Promise((res) => {
+      const ch = new MessageChannel();
+      const to = setTimeout(() => res(fallback), 900);
+      ch.port1.onmessage = (e) => { clearTimeout(to); res(e.data && e.data.version ? { version: e.data.version, built: e.data.built || '' } : fallback); };
+      sw.postMessage('GET_VERSION', [ch.port2]);
+    });
+  } catch { return fallback; }
+}
+async function showVersion() {
+  const v = await swVersion();
+  el('appVersion').textContent = `Version ${v.version}${v.built ? ' · updated ' + v.built : ''}`;
 }
 
 /* ---------- vault export / import (offline cross-device sync) ---------- */
@@ -1584,6 +1606,16 @@ window.addEventListener('hashchange', router);
 el('backBtn').addEventListener('click', () => { location.hash = el('backBtn').dataset.target || ''; });
 el('inboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
 el('syncBtn').addEventListener('click', openSync);
+el('checkUpdate')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  el('appVersion').textContent = 'Checking for updates…';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.update(); // if a newer version exists, the app auto-reloads into it
+    const v = await swVersion();
+    el('appVersion').textContent = `You're up to date · ${v.version}`;
+  } catch { showVersion(); }
+});
 el('exportVaultBtn').addEventListener('click', doExportVault);
 el('importVaultBtn').addEventListener('click', () => el('importVaultFile').click());
 el('importVaultFile').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) doImportVault(f); });

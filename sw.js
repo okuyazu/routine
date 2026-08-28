@@ -3,9 +3,19 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v25';
+const VERSION = 'v26';        // bump this on every deploy — it's the single source of truth
+const BUILT = '2026-08-28';   // human-readable release date shown in the app
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
+
+// Let the app ask which version is running (for the visible version + update check).
+self.addEventListener('message', (e) => {
+  if (e.data === 'GET_VERSION') {
+    const reply = { type: 'VERSION', version: VERSION, built: BUILT };
+    if (e.ports && e.ports[0]) e.ports[0].postMessage(reply);
+    else if (e.source) e.source.postMessage(reply);
+  }
+});
 
 const SHELL_FILES = [
   './',
