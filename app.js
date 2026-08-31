@@ -111,6 +111,27 @@ function streakOf(p, c) {
   }
   return s;
 }
+
+/* ---------- Garmin (read-only; filled by the scheduled sync into data/garmin.json) ---------- */
+let GARMIN = null;
+async function applyGarmin() {
+  try {
+    const r = await fetch(`${window.VAULT_BASE || ''}data/garmin.json?t=${Date.now()}`);
+    GARMIN = r.ok ? await r.json() : null;
+  } catch { GARMIN = null; }
+  if (!GARMIN) return;
+  const curWeek = isoWeek(new Date());
+  const curMonth = new Date().toISOString().slice(0, 7);
+  // Auto-fill any weekly/monthly running distance quota (a km sum-quota whose title mentions "run").
+  for (const p of PROJECTS) for (const c of (p.checklist || [])) {
+    if (!(isRecurring(c.cadence) && c.mode === 'sum' && /km/i.test(c.unit || '') && /run/i.test(c.title))) continue;
+    c.garmin = true;
+    let km = null;
+    if (/weekly/i.test(c.cadence) && GARMIN.week === curWeek) km = GARMIN.weekKm;
+    else if (/monthly/i.test(c.cadence) && GARMIN.month === curMonth) km = GARMIN.monthKm;
+    if (km != null) setCount(p.id, c.id, c.cadence, round2(km));
+  }
+}
 // Effective state of a checklist item: recurring items use the per-period
 // counter; one-time items use the boolean overlay.
 function checklistState(p, c) {
@@ -490,6 +511,7 @@ async function loadData() {
   el('appTagline').textContent = manifest.tagline || '';
   document.title = manifest.app || 'My Benchmarks';
   sweepClosedPeriods(); // archive any weeks/months that closed since last open
+  await applyGarmin();  // pull the latest running total from the scheduled Garmin sync
 }
 
 function updateInboxBadge() {
@@ -989,7 +1011,7 @@ function renderDetail(p) {
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
       ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''} ${over ? 'over' : ''}">${pillText}</span>` : ''}
-      ${c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : ''}
+      ${c.garmin ? '<span class="cadence garmin" title="Auto-updated from Garmin">⌚ Garmin</span>' : (c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : '')}
     </div>${streakHtml}`;
   }).join('');
 

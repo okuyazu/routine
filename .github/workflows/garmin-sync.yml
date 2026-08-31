@@ -2,8 +2,8 @@ name: Garmin sync
 
 on:
   schedule:
-    # Every day at 06:00 UTC. Adjust to taste (cron is in UTC).
-    - cron: "0 6 * * *"
+    # Every 3 hours (UTC). Garmin has no live push, so we poll.
+    - cron: "0 */3 * * *"
   workflow_dispatch: # lets you run it manually from the Actions tab
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r scripts/requirements.txt
-      - name: Pull Garmin data into the Hyrox note
+      - name: Pull weekly running data into data/garmin.json
         env:
           GARMIN_TOKEN: ${{ secrets.GARMIN_TOKEN }}
           GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
@@ -31,10 +31,10 @@ jobs:
         run: python scripts/garmin_sync.py
       - name: Commit changes if any
         run: |
-          if [[ -n "$(git status --porcelain projects/)" ]]; then
+          if [[ -n "$(git status --porcelain data/garmin.json)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add projects/
+            git add data/garmin.json
             git commit -m "Sync running data from Garmin"
             git push
           else

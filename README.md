@@ -217,9 +217,12 @@ with sensible categories and rules — edit them with **✎ Edit note**.
 ## Automatic sync from Garmin (optional)
 
 A scheduled GitHub Action ([`.github/workflows/garmin-sync.yml`](.github/workflows/garmin-sync.yml))
-pulls your recent Garmin Connect runs each morning and updates the Hyrox
-project's **weekly training volume** and **best-5K** metrics, then commits so
-the live app reflects real data.
+polls Garmin Connect every few hours, computes your **running distance for the
+current ISO week and month**, and writes [`data/garmin.json`](data/garmin.json).
+The app reads that file and **auto-fills any running-distance quota** — a weekly
+or monthly **sum quota in km** whose title mentions "run", e.g.
+`- [ ] Total running distance (weekly 30 km)`. Those items show a **⌚ Garmin**
+badge, and the current period's total comes straight from Garmin.
 
 **One-time setup:**
 
@@ -231,11 +234,13 @@ the live app reflects real data.
    ```
 2. Copy the printed token into a repository secret named **`GARMIN_TOKEN`**
    (Settings → Secrets and variables → Actions → New repository secret).
-3. Trigger it once to test: **Actions → Garmin sync → Run workflow**.
+3. Trigger it once to test: **Actions → Garmin sync → Run workflow**, then open
+   the app.
 
-It then runs daily (edit the `cron` to change the time — it's in UTC). Which
-Garmin numbers map to which metrics is controlled by `SYNCED_METRICS` in
-[`scripts/garmin_sync.py`](scripts/garmin_sync.py).
+It then runs every 3 hours (edit the `cron` to change it — it's in UTC).
+Garmin has no live push, so this is a poll: your weekly total updates within a
+few hours of a run and appears next time you open the app. Note `data/garmin.json`
+is committed to the repo, so on a public repo your running totals are public.
 
 > Garmin has no official API for individuals, so this uses the unofficial,
 > community-maintained `garth` client. If Garmin changes their login it may

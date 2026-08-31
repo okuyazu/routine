@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
-"""Pull recent running data from Garmin Connect and update the Hyrox note.
+"""Pull recent running data from Garmin Connect and write data/garmin.json.
 
 Runs in CI (see .github/workflows/garmin-sync.yml). Authentication is via a
 saved token (GARMIN_TOKEN secret) so it survives MFA and never needs your
 password in CI. Generate that token once with scripts/garmin_login.py.
+
+The app reads data/garmin.json and auto-fills any weekly/monthly "running
+distance" quota (a sum quota in km whose title mentions "run") with the total
+for the current ISO week / month.
 
 Garth is an unofficial, community-maintained client. Garmin has no open API
 for individuals, so if Garmin changes their login this may need updating.
 """
 from __future__ import annotations
 
+import json
 import os
-import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
-HYROX = Path(__file__).resolve().parent.parent / "projects" / "Hyrox Training.md"
-
-# Which computed values map onto which "## Progress" metric label in the
-# Hyrox note. Progress lines look like:  - Label: start / current / target unit
-#   weeklyvol -> total training hours over the last 7 days
-#   run5k     -> best recent 5K (or 5K-equivalent pace) in minutes
-SYNCED_LABELS = {"weeklyvol": "Weekly training", "run5k": "5K run time"}
+OUT = Path(__file__).resolve().parent.parent / "data" / "garmin.json"
 
 
 def _parse_gmt(ts: str) -> datetime:
@@ -30,138 +28,48 @@ def _parse_gmt(ts: str) -> datetime:
     return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
 
-def compute_metrics(activities: list[dict], now: datetime) -> dict[str, float]:
-    """Pure function: turn a list of Garmin activities into metric updates.
+def _iso_week(d: datetime) -> str:
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
 
-    Only returns keys it can compute confidently, so unmapped or unknowable
-    metrics are left untouched in the file.
-    """
-    updates: dict[str, float] = {}
-    week_start = now - timedelta(days=7)
 
-    # Weekly training volume: sum of every activity's duration in the last 7 days.
-    week_seconds = 0.0
+def summarize(activities: list[dict], now: datetime) -> dict:
+    """Turn Garmin activities into weekly/monthly running totals (km) + recent runs."""
+    cur_week = _iso_week(now)
+    cur_month = now.strftime("%Y-%m")
+    week_m = 0.0
+    month_m = 0.0
+    recent: list[dict] = []
     for a in activities:
+        type_key = (a.get("activityType") or {}).get("typeKey", "") or ""
+        if "run" not in type_key.lower():
+            continue
         ts = a.get("startTimeGMT")
-        dur = a.get("duration")
-        if not ts or not dur:
+        dist = a.get("distance") or 0.0  # meters
+        if not ts or dist <= 0:
             continue
-        if _parse_gmt(ts) >= week_start:
-            week_seconds += float(dur)
-    if week_seconds > 0:
-        updates["weeklyvol"] = round(week_seconds / 3600.0, 1)
-
-    # Best recent 5K: among runs of at least ~4.7 km, take the fastest average
-    # pace and express it as a 5K time. Longer runs are extrapolated to 5K, so
-    # this is a proxy for current 5K fitness, not a laboratory time.
-    best_5k_sec = None
-    for a in activities:
-        type_key = (a.get("activityType") or {}).get("typeKey", "")
-        if "run" not in type_key:
-            continue
-        dist = a.get("distance") or 0.0      # meters
-        dur = a.get("duration") or 0.0       # seconds
-        if dist < 4700 or dur <= 0:
-            continue
-        equiv = dur * 5000.0 / dist
-        if best_5k_sec is None or equiv < best_5k_sec:
-            best_5k_sec = equiv
-    if best_5k_sec is not None:
-        updates["run5k"] = round(best_5k_sec / 60.0, 1)
-
-    return updates
+        when = _parse_gmt(ts)
+        if _iso_week(when) == cur_week:
+            week_m += float(dist)
+        if when.strftime("%Y-%m") == cur_month:
+            month_m += float(dist)
+        if len(recent) < 8:
+            recent.append({
+                "date": when.date().isoformat(),
+                "km": round(float(dist) / 1000.0, 2),
+                "name": a.get("activityName") or "Run",
+            })
+    return {
+        "week": cur_week,
+        "weekKm": round(week_m / 1000.0, 2),
+        "month": cur_month,
+        "monthKm": round(month_m / 1000.0, 2),
+        "recent": recent,
+        "updatedAt": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
 
 
-def apply_updates(path: Path, updates: dict[str, float]) -> list[str]:
-    """Update the 'current' (middle) number of the matching ## Progress lines.
-
-    A progress line is:  - Label: start / current / target unit
-    Only the current value changes; everything else in the note is preserved.
-    Returns human-readable change descriptions (empty if nothing changed).
-    """
-    text = path.read_text(encoding="utf-8")
-    changes: list[str] = []
-    for key, value in updates.items():
-        label = SYNCED_LABELS.get(key)
-        if not label:
-            continue
-        new_str = f"{value:g}"
-        pattern = re.compile(
-            r"^(-\s*" + re.escape(label) + r":\s*[\d.]+\s*/\s*)([\d.]+)(\s*/\s*[\d.]+.*)$",
-            re.MULTILINE,
-        )
-
-        def repl(m: "re.Match[str]") -> str:
-            if float(m.group(2)) == float(new_str):
-                return m.group(0)
-            changes.append(f"{label}: {m.group(2)} -> {new_str}")
-            return f"{m.group(1)}{new_str}{m.group(3)}"
-
-        text = pattern.sub(repl, text)
-    if changes:
-        path.write_text(text, encoding="utf-8")
-    return changes
-
-
-def _fmt(v: float) -> str:
-    return f"{v:g}"
-
-
-def append_history(path: Path, label_values: dict[str, float]) -> bool:
-    """Record today's values as a row in the note's '## History' table.
-
-    Updates today's row if it already exists; otherwise appends a new row —
-    but skips it when nothing changed since the last recorded row. Returns
-    True if the file was modified.
-    """
-    if not label_values:
-        return False
-    lines = path.read_text(encoding="utf-8").split("\n")
-    h = next((i for i, l in enumerate(lines) if l.strip().lower() == "## history"), None)
-    if h is None:
-        return False
-    tbl = []
-    for i in range(h + 1, len(lines)):
-        s = lines[i].strip()
-        if s.startswith("|"):
-            tbl.append(i)
-        elif s.startswith("## ") or (s == "" and tbl):
-            break
-    if len(tbl) < 2:
-        return False
-
-    def cells(line: str) -> list[str]:
-        return [c.strip() for c in line.strip().strip("|").split("|")]
-
-    headers = cells(lines[tbl[0]])
-    today = datetime.now(timezone.utc).date().isoformat()
-    data_idx = [i for i in tbl[1:] if not re.match(r"^[\s|:\-]+$", lines[i].strip())]
-
-    for i in data_idx:                       # update an existing row for today
-        c = cells(lines[i])
-        if c and c[0] == today:
-            while len(c) < len(headers):
-                c.append("")
-            for j, hd in enumerate(headers):
-                if j and hd in label_values:
-                    c[j] = _fmt(label_values[hd])
-            lines[i] = "| " + " | ".join(c) + " |"
-            path.write_text("\n".join(lines), encoding="utf-8")
-            return True
-
-    if data_idx:                             # skip if unchanged vs the last row
-        last = cells(lines[data_idx[-1]])
-        if all(hd not in label_values or (j < len(last) and last[j] == _fmt(label_values[hd]))
-               for j, hd in enumerate(headers) if j):
-            return False
-
-    row = [today] + [_fmt(label_values[hd]) if hd in label_values else "" for hd in headers[1:]]
-    lines.insert((data_idx[-1] if data_idx else tbl[-1]) + 1, "| " + " | ".join(row) + " |")
-    path.write_text("\n".join(lines), encoding="utf-8")
-    return True
-
-
-def fetch_activities(limit: int = 40) -> list[dict]:
+def fetch_activities(limit: int = 50) -> list[dict]:
     """Authenticate to Garmin and return the most recent activities."""
     import garth
 
@@ -186,21 +94,11 @@ def fetch_activities(limit: int = 40) -> list[dict]:
 
 def main() -> None:
     activities = fetch_activities()
-    updates = compute_metrics(activities, datetime.now(timezone.utc))
-    if not updates:
-        print("Nothing to sync (no usable activities found).")
-        return
-    changes = apply_updates(HYROX, updates)
-    label_values = {SYNCED_LABELS[k]: v for k, v in updates.items() if k in SYNCED_LABELS}
-    logged = append_history(HYROX, label_values)
-    if changes:
-        print("Updated Hyrox metrics from Garmin:")
-        for c in changes:
-            print(f"  - {c}")
-    else:
-        print("Garmin data already matches; no metric change.")
-    if logged:
-        print("Recorded a history point for today.")
+    data = summarize(activities, datetime.now(timezone.utc))
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {OUT.name}: {data['weekKm']} km this week ({data['week']}), "
+          f"{data['monthKm']} km this month.")
 
 
 if __name__ == "__main__":

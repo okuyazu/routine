@@ -3,7 +3,7 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v26';        // bump this on every deploy — it's the single source of truth
+const VERSION = 'v27';        // bump this on every deploy — it's the single source of truth
 const BUILT = '2026-08-28';   // human-readable release date shown in the app
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
