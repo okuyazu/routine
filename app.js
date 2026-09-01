@@ -74,19 +74,19 @@ function setCount(projId, itemId, cadence, n) {
 
 /* ---------- per-period history + streaks (for recurring quota items) ---------- */
 const HISTORY_KEY = 'benchmarks:history:v1';
-let history = (() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || {}; } catch { return {}; } })();
-function saveHistory() { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { /* ignore */ } }
+let periodHistory = (() => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || {}; } catch { return {}; } })();
+function saveHistory() { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(periodHistory)); } catch { /* ignore */ } }
 function recordPeriod(projId, itemId, period, n, target) {
-  const it = ((history[projId] ||= {})[itemId] ||= {});
+  const it = ((periodHistory[projId] ||= {})[itemId] ||= {});
   if (!(period in it)) { it[period] = { n: round2(n), target }; saveHistory(); }
 }
 function periodValue(p, c, period) {
   if (period === periodKey(c.cadence)) return getCount(p.id, c.id, c.cadence);
-  const h = history[p.id] && history[p.id][c.id] && history[p.id][c.id][period];
+  const h = periodHistory[p.id] && periodHistory[p.id][c.id] && periodHistory[p.id][c.id][period];
   return h ? h.n : 0;
 }
 function periodRecorded(p, c, period) {
-  return period === periodKey(c.cadence) || !!(history[p.id] && history[p.id][c.id] && (period in history[p.id][c.id]));
+  return period === periodKey(c.cadence) || !!(periodHistory[p.id] && periodHistory[p.id][c.id] && (period in periodHistory[p.id][c.id]));
 }
 // On open in a new period, archive the just-closed period's tally so streaks survive the reset.
 function sweepClosedPeriods() {
@@ -112,25 +112,90 @@ function streakOf(p, c) {
   return s;
 }
 
-/* ---------- Garmin (read-only; filled by the scheduled sync into data/garmin.json) ---------- */
-let GARMIN = null;
+/* ---------- fitness connections: auto-fill running quotas ---------- */
+// A "running distance" quota is a weekly/monthly km sum-quota whose title mentions "run".
+function isRunQuota(c) {
+  return isRecurring(c.cadence) && c.mode === 'sum' && /km/i.test(c.unit || '') && /run/i.test(c.title);
+}
+// Fill the current period's total on every matching quota from a {week,weekKm,month,monthKm} summary.
+function fillRunQuota(summary, source) {
+  if (!summary) return;
+  const curWeek = isoWeek(new Date());
+  const curMonth = new Date().toISOString().slice(0, 7);
+  for (const p of PROJECTS) for (const c of (p.checklist || [])) {
+    if (!isRunQuota(c)) continue;
+    c.source = source;
+    let km = null;
+    if (/weekly/i.test(c.cadence) && summary.week === curWeek) km = summary.weekKm;
+    else if (/monthly/i.test(c.cadence) && summary.month === curMonth) km = summary.monthKm;
+    if (km != null) setCount(p.id, c.id, c.cadence, round2(km));
+  }
+}
+// Garmin: filled by the scheduled Action into data/garmin.json.
 async function applyGarmin() {
   try {
     const r = await fetch(`${window.VAULT_BASE || ''}data/garmin.json?t=${Date.now()}`);
-    GARMIN = r.ok ? await r.json() : null;
-  } catch { GARMIN = null; }
-  if (!GARMIN) return;
-  const curWeek = isoWeek(new Date());
-  const curMonth = new Date().toISOString().slice(0, 7);
-  // Auto-fill any weekly/monthly running distance quota (a km sum-quota whose title mentions "run").
-  for (const p of PROJECTS) for (const c of (p.checklist || [])) {
-    if (!(isRecurring(c.cadence) && c.mode === 'sum' && /km/i.test(c.unit || '') && /run/i.test(c.title))) continue;
-    c.garmin = true;
-    let km = null;
-    if (/weekly/i.test(c.cadence) && GARMIN.week === curWeek) km = GARMIN.weekKm;
-    else if (/monthly/i.test(c.cadence) && GARMIN.month === curMonth) km = GARMIN.monthKm;
-    if (km != null) setCount(p.id, c.id, c.cadence, round2(km));
-  }
+    if (r.ok) fillRunQuota(await r.json(), 'Garmin');
+  } catch { /* offline */ }
+}
+
+/* ---------- Strava (live OAuth via the Connections screen + a small backend) ---------- */
+const STRAVA_KEY = 'benchmarks:strava:v1';
+let CONN = null;
+async function loadConn() {
+  if (CONN) return CONN;
+  try { const r = await fetch(`${window.VAULT_BASE || ''}data/connections.json?t=${Date.now()}`); CONN = r.ok ? await r.json() : {}; }
+  catch { CONN = {}; }
+  return CONN;
+}
+const stravaCfg = (conn) => (conn && conn.strava && conn.strava.clientId && conn.strava.backendUrl) ? conn.strava : null;
+const stravaState = () => { try { return JSON.parse(localStorage.getItem(STRAVA_KEY)) || null; } catch { return null; } };
+const setStravaState = (s) => { if (s) localStorage.setItem(STRAVA_KEY, JSON.stringify(s)); else localStorage.removeItem(STRAVA_KEY); };
+const backendBase = (cfg) => cfg.backendUrl.replace(/\/$/, '');
+
+function connectStrava() {
+  loadConn().then((conn) => {
+    const cfg = stravaCfg(conn);
+    if (!cfg) { alert('Strava isn’t set up for this app yet.'); return; }
+    const redirect = location.origin + location.pathname; // must sit under the registered callback domain
+    const u = new URL('https://www.strava.com/oauth/authorize');
+    u.searchParams.set('client_id', cfg.clientId);
+    u.searchParams.set('response_type', 'code');
+    u.searchParams.set('redirect_uri', redirect);
+    u.searchParams.set('approval_prompt', 'auto');
+    u.searchParams.set('scope', 'activity:read');
+    u.searchParams.set('state', 'strava');
+    location.href = u.toString();
+  });
+}
+// On returning from Strava (?state=strava&code=…), swap the code for tokens.
+async function handleStravaCallback() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('state') !== 'strava' || !q.get('code')) return;
+  const code = q.get('code');
+  window.history.replaceState(null, '', location.origin + location.pathname + location.hash); // clean the URL
+  const cfg = stravaCfg(await loadConn());
+  if (!cfg) return;
+  try {
+    const r = await fetch(backendBase(cfg) + '/exchange', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+    });
+    const d = await r.json();
+    if (r.ok && d.refresh_token) setStravaState({ refresh_token: d.refresh_token, athlete: d.athlete || null, connectedAt: Date.now() });
+  } catch { /* ignore */ }
+}
+async function applyStrava() {
+  const st = stravaState(); if (!st || !st.refresh_token) return;
+  const cfg = stravaCfg(await loadConn()); if (!cfg) return;
+  try {
+    const r = await fetch(backendBase(cfg) + '/summary', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: st.refresh_token }),
+    });
+    const d = await r.json();
+    if (!r.ok) return;
+    if (d.refresh_token && d.refresh_token !== st.refresh_token) { st.refresh_token = d.refresh_token; setStravaState(st); }
+    fillRunQuota(d, 'Strava');
+  } catch { /* offline */ }
 }
 // Effective state of a checklist item: recurring items use the per-period
 // counter; one-time items use the boolean overlay.
@@ -512,6 +577,7 @@ async function loadData() {
   document.title = manifest.app || 'My Benchmarks';
   sweepClosedPeriods(); // archive any weeks/months that closed since last open
   await applyGarmin();  // pull the latest running total from the scheduled Garmin sync
+  await applyStrava();  // …or live from Strava if connected (takes precedence)
 }
 
 function updateInboxBadge() {
@@ -1011,7 +1077,7 @@ function renderDetail(p) {
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
       ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''} ${over ? 'over' : ''}">${pillText}</span>` : ''}
-      ${c.garmin ? '<span class="cadence garmin" title="Auto-updated from Garmin">⌚ Garmin</span>' : (c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : '')}
+      ${c.source ? `<span class="cadence garmin" title="Auto-updated from ${esc(c.source)}">${c.source === 'Strava' ? '🔗 Strava' : '⌚ Garmin'}</span>` : (c.cadence ? `<span class="cadence">${esc(c.cadence)}</span>` : '')}
     </div>${streakHtml}`;
   }).join('');
 
@@ -1549,6 +1615,7 @@ function openSync() {
   el('vaultHint').textContent = '';
   el('sheet').hidden = false;
   showVersion();
+  renderConnections();
 }
 
 /* ---------- app version / update check ---------- */
@@ -1570,6 +1637,23 @@ async function swVersion() {
 async function showVersion() {
   const v = await swVersion();
   el('appVersion').textContent = `Version ${v.version}${v.built ? ' · updated ' + v.built : ''}`;
+}
+
+async function renderConnections() {
+  const box = el('connStrava'); if (!box) return;
+  const cfg = stravaCfg(await loadConn());
+  const st = stravaState();
+  if (!cfg) { box.innerHTML = `<p class="muted small">Strava isn't set up for this app yet.</p>`; return; }
+  if (st && st.refresh_token) {
+    box.innerHTML = `<div class="conn-row"><span>🔗 Strava connected${st.athlete && st.athlete.name ? ' · ' + esc(st.athlete.name) : ''}</span>
+      <button class="btn ghost" id="stravaDisconnect">Disconnect</button></div>
+      <p class="muted small">Your running quota fills from Strava automatically.</p>`;
+    el('stravaDisconnect').addEventListener('click', async () => { setStravaState(null); await renderConnections(); });
+  } else {
+    box.innerHTML = `<button class="btn primary" id="stravaConnect" style="width:100%">🔗 Connect Strava</button>
+      <p class="muted small">Strava auto-imports your Garmin (and most watches') runs — connect it once to auto-fill your weekly running quota.</p>`;
+    el('stravaConnect').addEventListener('click', connectStrava);
+  }
 }
 
 /* ---------- vault export / import (offline cross-device sync) ---------- */
@@ -1609,6 +1693,7 @@ let lastLoad = 0;
 async function boot() {
   view.innerHTML = `<div class="loading"><div class="spinner"></div>Loading your benchmarks…</div>`;
   try {
+    await handleStravaCallback(); // if returning from Strava OAuth, store tokens before loading
     await loadData();
     handleShareTarget();
     updateInboxBadge();
