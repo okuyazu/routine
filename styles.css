@@ -121,6 +121,7 @@ body {
 .ms .m-title { font-size: 14.5px; font-weight: 550; }
 .ms.done .m-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
 .ms .m-date { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ms .m-auto { font-size: 11.5px; color: #a78bfa; margin-top: 3px; }
 .ms .m-date.overdue { color: #fca5a5; }
 
 /* ---------- Checklist ---------- */

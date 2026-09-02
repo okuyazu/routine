@@ -112,6 +112,52 @@ function streakOf(p, c) {
   return s;
 }
 
+// Consecutive periods where EVERY weekly/monthly quota in the project was met.
+function projectPeriodStreak(p, unit) {
+  const items = (p.checklist || []).filter((c) => isRecurring(c.cadence) && new RegExp(unit, 'i').test(c.cadence));
+  if (!items.length) return 0;
+  const cur = periodKey(unit);
+  let s = 0;
+  for (const pk of recentPeriods(unit, 60).reverse()) { // newest → oldest
+    const isCur = pk === cur;
+    const allMet = items.every((c) => periodValue(p, c, pk) >= (c.count || 1));
+    if (isCur && !allMet) continue;                       // current period still in progress
+    const anyRec = items.some((c) => periodRecorded(p, c, pk));
+    if (allMet && (isCur || anyRec)) s++; else break;
+  }
+  return s;
+}
+const projectWeekStreak = (p) => projectPeriodStreak(p, 'weekly');
+const projectMonthStreak = (p) => projectPeriodStreak(p, 'monthly');
+
+// A milestone can auto-complete after N met weeks/months — either an explicit
+// "(after N weeks)" tag, or inferred from wording like "4 consecutive weeks",
+// "8-week block", or "first … week".
+function milestoneAutoRule(m) {
+  let x = /after\s+(\d+)\s*(week|month)/i.exec(m.rule || '');
+  if (x) return { n: +x[1], unit: x[2].toLowerCase() };
+  const t = m.title || '';
+  x = /(\d+)\D{0,15}?weeks?\b/i.exec(t); if (x && +x[1] <= 60) return { n: +x[1], unit: 'week' };
+  x = /(\d+)\D{0,15}?months?\b/i.exec(t); if (x && +x[1] <= 36) return { n: +x[1], unit: 'month' };
+  if (/\bfirst\b[\s\S]*\bweek\b/i.test(t) || /\bone\s+week\b/i.test(t)) return { n: 1, unit: 'week' };
+  if (/\bfirst\b[\s\S]*\bmonth\b/i.test(t)) return { n: 1, unit: 'month' };
+  return null;
+}
+// Sticky auto-check: mark a rule-bound milestone done once its streak is reached,
+// but never override a value the user set by hand.
+function applyMilestoneAutochecks() {
+  for (const p of PROJECTS) {
+    let ws = null, ms = null;
+    for (const m of (p.milestones || [])) {
+      const rule = milestoneAutoRule(m); if (!rule) continue;
+      const manual = overlay[p.id] && Object.prototype.hasOwnProperty.call(overlay[p.id], m.id);
+      if (manual || m.done) continue;
+      const streak = rule.unit === 'month' ? (ms ??= projectMonthStreak(p)) : (ws ??= projectWeekStreak(p));
+      if (streak >= rule.n) setDone(p.id, m.id, true);
+    }
+  }
+}
+
 /* ---------- fitness connections: auto-fill running quotas ---------- */
 // A "running distance" quota is a weekly/monthly km sum-quota whose title mentions "run".
 function isRunQuota(c) {
@@ -428,7 +474,7 @@ function parseProjectMd(text, path) {
     rules: parseRules(sections.rules),
     metrics,
     milestones: parseTasks(sections.milestones).map((t) =>
-      ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done })),
+      ({ id: hashId('m', t.title), title: t.title, target: t.target, done: t.done, rule: t.cadence })),
     checklist: parseTasks(sections.checklist).map((t) =>
       ({ id: hashId('c', t.title), title: t.title, cadence: t.cadence || ((t.count > 1 || t.mode === 'sum') ? 'weekly' : null), done: t.done, count: t.count, mode: t.mode, unit: t.unit })),
   };
@@ -578,6 +624,7 @@ async function loadData() {
   sweepClosedPeriods(); // archive any weeks/months that closed since last open
   await applyGarmin();  // pull the latest running total from the scheduled Garmin sync
   await applyStrava();  // …or live from Strava if connected (takes precedence)
+  applyMilestoneAutochecks(); // auto-complete milestones tied to weekly/monthly streaks
 }
 
 function updateInboxBadge() {
@@ -1036,14 +1083,22 @@ function renderDetail(p) {
     </div>`;
   }).join('');
 
+  let msWk = null, msMo = null;
   const milestones = (p.milestones || []).map((m) => {
     const done = isDone(p.id, m.id, m.done);
     const overdue = !done && isOverdue(m.target);
+    const rule = milestoneAutoRule(m);
+    let autoCap = '';
+    if (rule && !done) {
+      const streak = rule.unit === 'month' ? (msMo ??= projectMonthStreak(p)) : (msWk ??= projectWeekStreak(p));
+      autoCap = `<div class="m-auto">⚡ auto · ${Math.min(streak, rule.n)}/${rule.n} ${rule.unit}${rule.n === 1 ? '' : 's'} done</div>`;
+    }
     return `<div class="ms ${done ? 'done' : ''}" data-ms="${esc(m.id)}">
       <div class="rail"><div class="node" style="${done ? `background:${esc(color)}` : ''}">${done ? '✓' : ''}</div></div>
       <div class="m-body">
         <div class="m-title">${esc(m.title)}</div>
         <div class="m-date ${overdue ? 'overdue' : ''}">${m.target ? esc(fmtDate(m.target)) : ''}${overdue ? ' · overdue' : ''}</div>
+        ${autoCap}
       </div>
     </div>`;
   }).join('');
