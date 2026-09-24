@@ -649,12 +649,54 @@ function projectProgress(p) {
     parts.push(p.checklist.reduce((s, c) => s + checklistFraction(p, c), 0) / p.checklist.length);
   }
   if (p.metrics?.length) {
-    parts.push(p.metrics.reduce((s, m) => s + metricPct(m), 0) / p.metrics.length);
+    parts.push(p.metrics.reduce((s, m) => s + metricPct(metricView(p, m)), 0) / p.metrics.length);
   }
   if (!parts.length) return 0;
   return parts.reduce((a, b) => a + b, 0) / parts.length;
 }
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/* ---------- link a Progress metric to a matching Checklist quota ----------
+ * A metric like "Running distance: 0 / 0 / 30 km/week" is meant to mirror the
+ * recurring quota you actually tick each week ("… 15.21/30 km"). We match by
+ * equal numeric target + compatible unit, so the top bar shows your live tally
+ * instead of a stale stored 0. Budget (finance) projects are never linked. */
+function unitBase(u) { return (u || '').split('/')[0].trim().toLowerCase(); }
+const COUNT_WORDS = /^(day|days|session|sessions|time|times|x|rep|reps|workout|workouts|run|runs|week|weeks)?$/;
+function metricLinkedQuota(p, m) {
+  if (!p || p.budget || !Array.isArray(p.checklist)) return null;
+  const mUnit = unitBase(m.unit);
+  let best = null, bestScore = -1;
+  for (const c of p.checklist) {
+    if (!isRecurring(c.cadence)) continue;
+    const isQuota = c.mode === 'sum' || (c.count || 1) > 1;
+    if (!isQuota) continue;
+    if ((c.count || 1) !== m.target) continue;            // targets must line up
+    let score = 0;
+    if (c.mode === 'sum') {
+      const cUnit = unitBase(c.unit);
+      if (mUnit && cUnit) { if (mUnit !== cUnit) continue; score += 3; } // unit conflict → not a match
+    } else {
+      // count quota: refuse if the metric carries a physical unit (km, $, kg…)
+      if (mUnit && !COUNT_WORDS.test(mUnit)) continue;
+    }
+    // prefer the quota whose title shares words with the metric label
+    const words = new Set(m.label.toLowerCase().split(/\W+/).filter((w) => w.length > 2));
+    for (const w of c.title.toLowerCase().split(/\W+/)) if (words.has(w)) score += 1;
+    if (score > bestScore) { bestScore = score; best = c; }
+  }
+  return best;
+}
+// Effective "current" for a metric: the linked quota's live tally, else its stored value.
+function metricCurrent(p, m) {
+  const c = metricLinkedQuota(p, m);
+  return c ? checklistState(p, c).raw : m.current;
+}
+function metricView(p, m) {
+  const c = metricLinkedQuota(p, m);
+  if (!c) return m;
+  return { ...m, current: checklistState(p, c).raw, linked: c };
+}
 
 /* ---------- formatting ---------- */
 function fmtNum(n) {
@@ -1056,13 +1098,14 @@ function handleShareTarget() {
 /* ---------- detail ---------- */
 function renderDetail(p) {
   const color = p.color || '#7c3aed';
-  const metrics = (p.metrics || []).map((m) => {
+  const metrics = (p.metrics || []).map((m0) => {
+    const m = metricView(p, m0);                 // mirror a linked checklist quota, if any
     const pct = metricPct(m);
-    const over = p.budget && m.current > m.target;
-    const barColor = over ? 'var(--crit)' : color;
-    const mom = p.budget ? null : metricMomentum(m);
-    const spark = (m.history && m.history.length > 1)
-      ? `<div class="spark-row">${sparkline(m.history, over ? 'var(--crit)' : color)}
+    const over = m.current > m.target;
+    const barColor = (p.budget && over) ? 'var(--crit)' : color;
+    const mom = (p.budget || m.linked) ? null : metricMomentum(m);
+    const spark = (!m.linked && m.history && m.history.length > 1)
+      ? `<div class="spark-row">${sparkline(m.history, (p.budget && over) ? 'var(--crit)' : color)}
            ${mom ? `<span class="mom ${mom}">${MOM[mom]} ${mom === 'up' ? 'improving' : mom === 'down' ? 'slipping' : 'flat'}</span>` : ''}
          </div>`
       : '';
@@ -1073,13 +1116,16 @@ function renderDetail(p) {
         ? `<span class="over-note">over by ${esc(fmtValue({ current: -left, unit: m.unit }, 'current'))}</span>`
         : `<span class="left-note">${esc(fmtValue({ current: left, unit: m.unit }, 'current'))} left</span>`;
     }
+    const linkCap = m.linked
+      ? `<div class="metric-link">↳ from checklist · ${esc(m.linked.title)}</div>`
+      : '';
     return `<div class="metric">
       <div class="metric-top">
         <span class="name">${esc(m.label)} ${status}</span>
         <span class="nums"><b>${esc(fmtValue(m, 'current'))}</b> / ${esc(fmtValue(m, 'target'))}</span>
       </div>
       <div class="bar"><span style="width:${(pct * 100).toFixed(0)}%;background:${barColor}"></span></div>
-      ${spark}
+      ${linkCap}${spark}
     </div>`;
   }).join('');
 
