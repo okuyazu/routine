@@ -17,7 +17,10 @@ Build a sustainable hybrid routine combining four strength-conditioning sessions
 - [ ] Complete an 8-week consistent training block 📅 2026-10-25
 
 ## Checklist
-- [ ] Weight training + ab roller + wall balls + kettlebell (weekly ×4)
+- [ ] Wallballs (weekly 800 reps)
+- [ ] Ab roller (weekly 200 reps)
+- [ ] Kettlebell swing (weekly 200 reps)
+- [ ] Weight training (weekly ×4)
 - [ ] Total running distance — log each run (weekly 30 km)
 - [ ] Long run 10 km+ (weekly)
 - [ ] Genuine recovery day (weekly)
