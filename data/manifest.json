@@ -1,7 +1,9 @@
 {
   "app": "My Benchmarks",
   "tagline": "Personal milestones & progress",
-  "projects": [],
+  "projects": [
+    "projects/hyrox-strength.md"
+  ],
   "inbox": [
     "inbox/Welcome.md"
   ]
