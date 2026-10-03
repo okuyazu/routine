@@ -942,11 +942,13 @@ async function submitProject() {
     btn.textContent = 'Done';
     setTimeout(() => { el('projectSheet').hidden = true; btn.textContent = 'Create project'; }, 2600);
   } catch (e) {
-    if (e.needToken) { el('projectSheet').hidden = true; openTokenSheet('Connect GitHub once, then create your project.'); }
+    if (e.needToken) { el('projectSheet').hidden = true; openTokenSheet('Connect GitHub once, then create your project.', openProjectForm); }
     else { el('pfHint').textContent = '⚠︎ ' + e.message; el('pfHint').classList.add('err'); }
   } finally { btn.disabled = false; }
 }
-function openTokenSheet(hint) {
+let tokenNext = null; // optional action to run after a token is saved
+function openTokenSheet(hint, next) {
+  tokenNext = typeof next === 'function' ? next : null;
   el('tkInput').value = GH.token;
   el('tkHint').textContent = hint || (GH.token ? 'A token is saved on this device.' : '');
   el('tokenSheet').hidden = false;
@@ -1741,6 +1743,21 @@ async function showVersion() {
 }
 
 async function renderConnections() {
+  // GitHub sync — the cross-device backup. Always shown.
+  const gh = el('connGithub');
+  if (gh) {
+    if (GH.token) {
+      gh.innerHTML = `<div class="conn-row"><span>✅ GitHub synced</span>
+        <button class="btn ghost" id="ghDisconnect">Disconnect</button></div>
+        <p class="muted small">Every change saves to your repo and loads on all your devices.</p>`;
+      el('ghDisconnect').addEventListener('click', () => { GH.token = ''; renderConnections(); });
+    } else {
+      gh.innerHTML = `<button class="btn primary" id="ghConnect" style="width:100%">🔗 Connect GitHub</button>
+        <p class="muted small">Optional — sync across devices and keep a cloud backup. Paste a fine-grained
+        token (Contents: read &amp; write) so clearing a browser can't lose your data.</p>`;
+      el('ghConnect').addEventListener('click', () => openTokenSheet());
+    }
+  }
   const box = el('connStrava'); if (!box) return;
   const cfg = stravaCfg(await loadConn());
   const st = stravaState();
@@ -1853,7 +1870,11 @@ el('pfConnLink').addEventListener('click', (e) => { e.preventDefault(); el('proj
 el('tkSave').addEventListener('click', () => {
   GH.token = el('tkInput').value.trim();
   el('tkHint').textContent = GH.token ? 'Saved on this device ✓' : 'Enter a token to save.';
-  if (GH.token) setTimeout(() => { el('tokenSheet').hidden = true; openProjectForm(); }, 700);
+  if (GH.token) setTimeout(() => {
+    el('tokenSheet').hidden = true;
+    const next = tokenNext; tokenNext = null;
+    if (next) next(); else renderConnections(); // refresh the Backup & sync sheet's status
+  }, 700);
 });
 el('tkClear').addEventListener('click', () => { GH.token = ''; el('tkInput').value = ''; el('tkHint').textContent = 'Removed from this device.'; });
 el('tokenSheet').addEventListener('click', (e) => { if (e.target === el('tokenSheet')) el('tokenSheet').hidden = true; });
