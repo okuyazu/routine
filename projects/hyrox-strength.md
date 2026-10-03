@@ -21,4 +21,3 @@ Build a sustainable hybrid routine combining four strength-conditioning sessions
 - [ ] Total running distance — log each run (weekly 30 km)
 - [ ] Long run 10 km+ (weekly)
 - [ ] Genuine recovery day (weekly)
-- [ ] Adjust wall ball & kettlebell volume if leg fatigue rises (weekly)
