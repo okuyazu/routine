@@ -190,13 +190,15 @@
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="quotaTitle">
       <div class="sheet-handle"></div>
       <h2 id="quotaTitle">Log</h2>
+      <label class="field" id="quotaPeriodWrap"><span>Which period</span>
+        <select id="quotaPeriod"></select></label>
       <p class="muted" id="quotaSub"></p>
       <div class="field-row">
         <input id="quotaAmount" class="field grow" type="number" inputmode="decimal" step="any" placeholder="Add amount" />
         <button class="btn primary" id="quotaAdd" style="flex:none;width:auto;padding:0 20px">Add</button>
       </div>
       <div class="sheet-actions">
-        <button class="btn ghost" id="quotaReset">Reset this week</button>
+        <button class="btn ghost" id="quotaReset">Reset</button>
         <button class="btn ghost" id="quotaClose">Done</button>
       </div>
     </div>

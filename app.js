@@ -85,6 +85,34 @@ function periodValue(p, c, period) {
   const h = periodHistory[p.id] && periodHistory[p.id][c.id] && periodHistory[p.id][c.id][period];
   return h ? h.n : 0;
 }
+// Set the tally for any period — the current one (live counter) or a past one
+// (history), so a forgotten entry can be added to the week it belongs to.
+function setPeriodValue(p, c, period, n) {
+  n = round2(Math.max(0, n || 0));
+  if (period === periodKey(c.cadence)) { setCount(p.id, c.id, c.cadence, n); return; }
+  ((periodHistory[p.id] ||= {})[c.id] ||= {})[period] = { n, target: c.count || 1 };
+  saveHistory();
+}
+// Recent periods with a representative date each, newest first (for the picker).
+function recentPeriodsDetailed(cadence, k) {
+  const out = []; const d = new Date();
+  for (let i = 0; i < k; i++) {
+    out.push({ key: periodKeyFor(cadence, d), date: new Date(d) });
+    if (/daily/i.test(cadence)) d.setDate(d.getDate() - 1);
+    else if (/monthly/i.test(cadence)) d.setMonth(d.getMonth() - 1);
+    else d.setDate(d.getDate() - 7);
+  }
+  return out;
+}
+function periodOptLabel(cadence, i, date) {
+  const f = (x) => x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (/daily/i.test(cadence)) return i === 0 ? 'Today' : i === 1 ? 'Yesterday' : f(date);
+  if (/monthly/i.test(cadence)) return (i === 0 ? 'This month · ' : i === 1 ? 'Last month · ' : '') + date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const mon = new Date(date); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const range = `${f(mon)} – ${f(sun)}`;
+  return i === 0 ? `This week · ${range}` : i === 1 ? `Last week · ${range}` : range;
+}
 function periodRecorded(p, c, period) {
   return period === periodKey(c.cadence) || !!(periodHistory[p.id] && periodHistory[p.id][c.id] && (period in periodHistory[p.id][c.id]));
 }
@@ -1930,38 +1958,61 @@ el('csvApply').addEventListener('click', async () => {
 // Log-amount sheet (weekly sum quotas)
 let quotaCtx = null;
 function openQuota(p, c, node) {
-  quotaCtx = { p, c, node };
+  const cur = periodKey(c.cadence);
+  quotaCtx = { p, c, node, period: cur };
   el('quotaTitle').textContent = c.title;
   el('quotaAmount').value = '';
+  // Fill the period picker with the last several periods (newest first).
+  const sel = el('quotaPeriod');
+  sel.innerHTML = recentPeriodsDetailed(c.cadence, 8)
+    .map((o, i) => `<option value="${esc(o.key)}">${esc(periodOptLabel(c.cadence, i, o.date))}</option>`).join('');
+  sel.value = cur;
   quotaRefresh();
   el('quotaSheet').hidden = false;
   el('quotaAmount').focus();
 }
 function quotaRefresh() {
-  const { p, c, node } = quotaCtx;
-  const st = checklistState(p, c);
+  const { p, c, node, period } = quotaCtx;
+  const isCur = period === periodKey(c.cadence);
+  const raw = periodValue(p, c, period);
+  const target = c.count || 1;
+  const done = raw >= target;
   const noun = /daily/i.test(c.cadence) ? 'day' : /monthly/i.test(c.cadence) ? 'month' : 'week';
-  const over = st.raw > st.target;
-  const pct = st.target ? Math.round((st.raw / st.target) * 100) : 0;
-  el('quotaSub').textContent = `${round2(st.raw)} / ${st.target} ${c.unit || ''} this ${noun}${over ? ` · ${pct}% 🎉` : ''}`.replace(/\s+/g, ' ');
-  const color = p.color || '#7c3aed';
-  node.classList.toggle('on', st.done);
-  const box = node.querySelector('.box'); box.style.background = st.done ? color : ''; box.style.borderColor = st.done ? color : '';
-  const pill = node.querySelector('.count-pill');
-  if (pill) { pill.textContent = `${round2(st.raw)}/${st.target}${c.unit ? ' ' + c.unit : ''}${over ? ' · ' + pct + '%' : ''}`; pill.classList.toggle('on', st.done); pill.classList.toggle('over', over); }
+  const over = raw > target;
+  const pct = target ? Math.round((raw / target) * 100) : 0;
+  const when = isCur ? `this ${noun}` : 'that ' + noun;
+  el('quotaSub').textContent = `${round2(raw)} / ${target} ${c.unit || ''} ${when}${over ? ` · ${pct}% 🎉` : ''}`.replace(/\s+/g, ' ');
+  el('quotaReset').textContent = isCur ? `Reset this ${noun}` : `Reset that ${noun}`;
+  // Only reflect changes on the project row when editing the current period.
+  if (isCur && node) {
+    const color = p.color || '#7c3aed';
+    node.classList.toggle('on', done);
+    const box = node.querySelector('.box'); if (box) { box.style.background = done ? color : ''; box.style.borderColor = done ? color : ''; }
+    const pill = node.querySelector('.count-pill');
+    if (pill) { pill.textContent = `${round2(raw)}/${target}${c.unit ? ' ' + c.unit : ''}${over ? ' · ' + pct + '%' : ''}`; pill.classList.toggle('on', done); pill.classList.toggle('over', over); }
+  }
 }
+el('quotaPeriod').addEventListener('change', () => {
+  if (quotaCtx) { quotaCtx.period = el('quotaPeriod').value; quotaRefresh(); }
+});
 el('quotaAdd').addEventListener('click', () => {
   if (!quotaCtx) return;
-  const { p, c } = quotaCtx;
+  const { p, c, period } = quotaCtx;
   const amt = parseFloat(el('quotaAmount').value);
   if (isNaN(amt)) return;
-  setCount(p.id, c.id, c.cadence, round2(getCount(p.id, c.id, c.cadence) + amt));
+  setPeriodValue(p, c, period, periodValue(p, c, period) + amt);
   el('quotaAmount').value = '';
   quotaRefresh();
 });
-el('quotaReset').addEventListener('click', () => { if (quotaCtx) { const { p, c } = quotaCtx; setCount(p.id, c.id, c.cadence, 0); quotaRefresh(); } });
-el('quotaClose').addEventListener('click', () => { el('quotaSheet').hidden = true; });
-el('quotaSheet').addEventListener('click', (e) => { if (e.target === el('quotaSheet')) el('quotaSheet').hidden = true; });
+el('quotaReset').addEventListener('click', () => {
+  if (quotaCtx) { const { p, c, period } = quotaCtx; setPeriodValue(p, c, period, 0); quotaRefresh(); }
+});
+function closeQuota() {
+  el('quotaSheet').hidden = true;
+  if (quotaCtx) { const p = quotaCtx.p; applyMilestoneAutochecks(); renderDetail(p); }
+}
+el('quotaClose').addEventListener('click', closeQuota);
+el('quotaSheet').addEventListener('click', (e) => { if (e.target === el('quotaSheet')) closeQuota(); });
 
 // Edit-note sheet
 el('editCancel').addEventListener('click', () => { el('editSheet').hidden = true; });
