@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark; /* render native controls (esp. <select>) in dark mode so their text is visible */
   --bg: #0b0f17;
   --bg-elev: #131a26;
   --card: #161f2e;
@@ -263,7 +264,11 @@ a { color: var(--accent-2); }
 .field select {
   width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
   border-radius: 10px; padding: 11px 12px; font-size: 15px; font-family: inherit;
+  -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238ea0bd' d='M1 1l5 5 5-5'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
 }
+.field select option { color: var(--text); background: var(--card); }
 #csvFile { width: 100%; margin-top: 8px; color: var(--muted); font-size: 13px; }
 #csvWarn.err { color: var(--crit); font-weight: 600; }
 .csv-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin: 4px 0 2px; }
