@@ -204,6 +204,22 @@
     </div>
   </div>
 
+  <!-- Milestone editor (reschedule / rename / remove) -->
+  <div class="sheet-backdrop" id="msSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="msSheetTitle">
+      <div class="sheet-handle"></div>
+      <h2 id="msSheetTitle">Edit milestone</h2>
+      <label class="field"><span>Title</span><input id="msTitle" type="text" /></label>
+      <label class="field"><span>Target date</span><input id="msDate" type="date" /></label>
+      <div class="sheet-actions">
+        <button class="btn primary" id="msSave">Save</button>
+        <button class="btn ghost" id="msCancel">Cancel</button>
+      </div>
+      <button class="btn ghost danger" id="msDelete" style="width:100%;margin-top:8px">🗑 Remove milestone</button>
+      <p class="muted small" id="msHint"></p>
+    </div>
+  </div>
+
   <!-- Edit-note sheet -->
   <div class="sheet-backdrop" id="editSheet" hidden>
     <div class="sheet form-sheet" role="dialog" aria-modal="true" aria-labelledby="editSheetTitle">

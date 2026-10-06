@@ -1176,6 +1176,7 @@ function renderDetail(p) {
         <div class="m-date ${overdue ? 'overdue' : ''}">${m.target ? esc(fmtDate(m.target)) : ''}${overdue ? ' · overdue' : ''}</div>
         ${autoCap}
       </div>
+      ${p.path ? `<button class="m-edit" data-ms-edit="${esc(m.id)}" title="Reschedule or remove" aria-label="Edit milestone">✎</button>` : ''}
     </div>`;
   }).join('');
 
@@ -1256,7 +1257,8 @@ function renderDetail(p) {
     });
   });
   view.querySelectorAll('[data-ms]').forEach((node) => {
-    node.addEventListener('click', () => {
+    node.addEventListener('click', (e) => {
+      if (e.target.closest('[data-ms-edit]')) return; // the ✎ button handles its own click
       const id = node.dataset.ms;
       const item = p.milestones.find((m) => m.id === id);
       const next = !isDone(p.id, id, item.done);
@@ -1265,6 +1267,13 @@ function renderDetail(p) {
       const dot = node.querySelector('.node');
       dot.style.background = next ? color : '';
       dot.textContent = next ? '✓' : '';
+    });
+  });
+  view.querySelectorAll('[data-ms-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const m = p.milestones.find((x) => x.id === btn.dataset.msEdit);
+      if (m) openMilestoneEditor(p, m);
     });
   });
   el('editNoteBtn')?.addEventListener('click', () => openNoteEditor(p));
@@ -1403,6 +1412,65 @@ async function deleteNoteAndUnlist(path) {
     const manifest = JSON.parse(m.text);
     manifest.projects = (manifest.projects || []).filter((p) => p !== path);
     await ghPutFile('data/manifest.json', JSON.stringify(manifest, null, 2) + '\n', `Unlist ${path.split('/').pop()}`, m.sha);
+  }
+}
+
+/* ---------- milestone editor: reschedule / rename / remove ---------- */
+function parseMsLine(line) {
+  const mm = line.match(/^(\s*-\s*)\[([ xX])\]\s*(.*)$/);
+  if (!mm) return null;
+  let title = mm[3].trim(), date = null;
+  const dm = title.match(/📅\s*(\d{4}-\d{2}-\d{2})/);
+  if (dm) { date = dm[1]; title = title.replace(dm[0], '').trim(); }
+  return { done: mm[2].toLowerCase() === 'x', title, date };
+}
+function buildMsLine(done, title, date) {
+  return `- [${done ? 'x' : ' '}] ${title}${date ? ' 📅 ' + date : ''}`;
+}
+// Return a copy of the raw note with milestone m rescheduled/renamed or removed.
+function editMilestoneInRaw(raw, m, changes) {
+  const lines = (raw || '').split(/\r?\n/);
+  let inMs = false, idx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const h = lines[i].match(/^##\s+(.+)/);
+    if (h) { inMs = /milestones/i.test(h[1]); continue; }
+    if (!inMs) continue;
+    const parsed = parseMsLine(lines[i]);
+    if (parsed && parsed.title === m.title) { idx = i; break; }
+  }
+  if (idx === -1) return null;
+  if (changes.remove) {
+    lines.splice(idx, 1);
+  } else {
+    const cur = parseMsLine(lines[idx]);
+    const title = (changes.title != null ? changes.title : cur.title).trim();
+    const date = changes.target !== undefined ? (changes.target || null) : cur.date;
+    lines[idx] = buildMsLine(cur.done, title, date);
+  }
+  return lines.join('\n');
+}
+let msCtx = null, msDeleteArmed = false;
+function openMilestoneEditor(p, m) {
+  msCtx = { p, m };
+  msDeleteArmed = false;
+  el('msTitle').value = m.title;
+  el('msDate').value = m.target || '';
+  el('msHint').textContent = '';
+  el('msHint').classList.remove('err');
+  el('msDelete').textContent = '🗑 Remove milestone';
+  el('msSheet').hidden = false;
+}
+async function commitMilestoneChange(changes) {
+  const { p, m } = msCtx;
+  const next = editMilestoneInRaw(p.raw || '', m, changes);
+  if (next == null) throw new Error('Couldn’t find that milestone in the note.');
+  await saveNoteEdit(p.path, next);
+}
+async function afterMilestoneSave(okMsg) {
+  if (window.isLocalMode && window.isLocalMode()) {
+    await loadData(); el('msSheet').hidden = true; router();
+  } else {
+    el('msHint').textContent = okMsg; setTimeout(() => { el('msSheet').hidden = true; }, 2200);
   }
 }
 
@@ -2013,6 +2081,37 @@ function closeQuota() {
 }
 el('quotaClose').addEventListener('click', closeQuota);
 el('quotaSheet').addEventListener('click', (e) => { if (e.target === el('quotaSheet')) closeQuota(); });
+
+// Milestone editor sheet
+el('msCancel').addEventListener('click', () => { el('msSheet').hidden = true; });
+el('msSheet').addEventListener('click', (e) => { if (e.target === el('msSheet')) el('msSheet').hidden = true; });
+el('msSave').addEventListener('click', async () => {
+  if (!msCtx) return;
+  const btn = el('msSave'); btn.disabled = true;
+  el('msHint').classList.remove('err'); el('msHint').textContent = 'Saving…';
+  try {
+    const title = el('msTitle').value.trim();
+    if (!title) throw new Error('Give the milestone a title.');
+    await commitMilestoneChange({ title, target: el('msDate').value || '' });
+    await afterMilestoneSave('✓ Updated. Appears after GitHub publishes (~1 min).');
+  } catch (e) {
+    if (e.needToken) { el('msSheet').hidden = true; openTokenSheet('Connect GitHub once, then edit this milestone.'); }
+    else { el('msHint').textContent = '⚠︎ ' + e.message; el('msHint').classList.add('err'); }
+  } finally { btn.disabled = false; }
+});
+el('msDelete').addEventListener('click', async () => {
+  if (!msCtx) return;
+  if (!msDeleteArmed) { msDeleteArmed = true; el('msDelete').textContent = 'Tap again to remove'; return; }
+  const btn = el('msDelete'); btn.disabled = true;
+  el('msHint').classList.remove('err'); el('msHint').textContent = 'Removing…';
+  try {
+    await commitMilestoneChange({ remove: true });
+    await afterMilestoneSave('✓ Removed. Appears after GitHub publishes (~1 min).');
+  } catch (e) {
+    if (e.needToken) { el('msSheet').hidden = true; openTokenSheet('Connect GitHub once, then remove this milestone.'); }
+    else { el('msHint').textContent = '⚠︎ ' + e.message; el('msHint').classList.add('err'); btn.disabled = false; msDeleteArmed = false; el('msDelete').textContent = '🗑 Remove milestone'; }
+  } finally { btn.disabled = false; }
+});
 
 // Edit-note sheet
 el('editCancel').addEventListener('click', () => { el('editSheet').hidden = true; });
