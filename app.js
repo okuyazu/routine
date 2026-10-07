@@ -2030,9 +2030,10 @@ function openQuota(p, c, node) {
   quotaCtx = { p, c, node, period: cur };
   el('quotaTitle').textContent = c.title;
   el('quotaAmount').value = '';
-  // Fill the period picker with the last several periods (newest first).
+  // Fill the period picker: the current period + up to 4 back (newest first),
+  // so backfilling is limited to roughly the last 4 weeks.
   const sel = el('quotaPeriod');
-  sel.innerHTML = recentPeriodsDetailed(c.cadence, 8)
+  sel.innerHTML = recentPeriodsDetailed(c.cadence, 5)
     .map((o, i) => `<option value="${esc(o.key)}">${esc(periodOptLabel(c.cadence, i, o.date))}</option>`).join('');
   sel.value = cur;
   quotaRefresh();
