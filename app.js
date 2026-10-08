@@ -1128,7 +1128,9 @@ function handleShareTarget() {
 /* ---------- detail ---------- */
 function renderDetail(p) {
   const color = p.color || '#7c3aed';
-  const metrics = (p.metrics || []).map((m0) => {
+  // Metrics that mirror a checklist quota are now shown as the checklist's own
+  // fill bar, so drop them from the Progress section to avoid duplication.
+  const metrics = (p.metrics || []).filter((m0) => p.budget || !metricLinkedQuota(p, m0)).map((m0) => {
     const m = metricView(p, m0);                 // mirror a linked checklist quota, if any
     const pct = metricPct(m);
     const over = m.current > m.target;
@@ -1185,6 +1187,7 @@ function renderDetail(p) {
     const showPill = st.recurring && (c.mode === 'sum' || st.target > 1);
     const over = st.raw > st.target;
     const pct = st.target ? Math.round((st.raw / st.target) * 100) : 0;
+    const fill = Math.min(100, pct);
     const pillText = `${round2(st.raw)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}${over ? ' · ' + pct + '%' : ''}`;
     let streakHtml = '';
     if (st.recurring) {
@@ -1206,6 +1209,7 @@ function renderDetail(p) {
       }
     }
     return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
+      ${showPill ? `<span class="check-fill${over ? ' over' : ''}" style="width:${fill}%;background:${over ? 'var(--good)' : esc(color)}"></span>` : ''}
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
       ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''} ${over ? 'over' : ''}">${pillText}</span>` : ''}

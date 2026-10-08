@@ -130,10 +130,14 @@ body {
 .ms .m-date.overdue { color: #fca5a5; }
 
 /* ---------- Checklist ---------- */
-.check { display: flex; align-items: center; gap: 13px; padding: 13px 14px;
+.check { position: relative; overflow: hidden; display: flex; align-items: center; gap: 13px; padding: 13px 14px;
   background: var(--card); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 9px;
   cursor: pointer; user-select: none; }
 .check:active { background: var(--card-2); }
+.check-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; z-index: 0;
+  opacity: .16; pointer-events: none; transition: width .5s ease; }
+.check-fill.over { opacity: .24; }
+.check > *:not(.check-fill) { position: relative; z-index: 1; }
 .box { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line);
   flex: none; display: grid; place-items: center; color: #fff; transition: background .15s, border-color .15s; }
 .box svg { width: 15px; height: 15px; opacity: 0; transform: scale(.6); transition: .15s; }
