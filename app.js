@@ -282,6 +282,15 @@ function checklistState(p, c) {
   const d = isDone(p.id, c.id, c.done);
   return { raw: d ? target : 0, n: d ? target : 0, target, done: d, recurring: false };
 }
+// How a recurring quota reads when we show what's REMAINING: the pill text and
+// the depleting bar width (full when nothing done, empty when the target is met).
+function quotaRemain(raw, target, unitStr, done, over) {
+  const remaining = Math.max(0, round2(target - raw));
+  const fill = target ? Math.max(0, Math.min(100, (remaining / target) * 100)) : 0;
+  const u = unitStr ? ' ' + unitStr : '';
+  const text = over ? `✓ +${round2(raw - target)}${u}` : (done ? '✓ done' : `${remaining}${u} left`);
+  return { text, fill };
+}
 function checklistDone(p, c) { return checklistState(p, c).done; }
 function checklistFraction(p, c) { const s = checklistState(p, c); return s.target ? s.n / s.target : 0; }
 
@@ -1186,9 +1195,8 @@ function renderDetail(p) {
     const st = checklistState(p, c);
     const showPill = st.recurring && (c.mode === 'sum' || st.target > 1);
     const over = st.raw > st.target;
-    const pct = st.target ? Math.round((st.raw / st.target) * 100) : 0;
-    const fill = Math.min(100, pct);
-    const pillText = `${round2(st.raw)}/${st.target}${c.mode === 'sum' && c.unit ? ' ' + esc(c.unit) : ''}${over ? ' · ' + pct + '%' : ''}`;
+    const unitStr = (c.mode === 'sum' && c.unit) ? esc(c.unit) : '';
+    const { text: pillText, fill } = quotaRemain(st.raw, st.target, unitStr, st.done, over);
     let streakHtml = '';
     if (st.recurring) {
       const cur = periodKey(c.cadence);
@@ -1209,7 +1217,7 @@ function renderDetail(p) {
       }
     }
     return `<div class="check ${st.done ? 'on' : ''}" data-check="${esc(c.id)}">
-      ${showPill ? `<span class="check-fill${over ? ' over' : ''}" style="width:${fill}%;background:${over ? 'var(--good)' : esc(color)}"></span>` : ''}
+      ${showPill ? `<span class="check-fill" style="width:${fill}%;background:${esc(color)}"></span>` : ''}
       <div class="box" style="${st.done ? `background:${esc(color)};border-color:${esc(color)}` : ''}">${CHECK_SVG}</div>
       <span class="c-title">${esc(c.title)}</span>
       ${showPill ? `<span class="count-pill ${st.done ? 'on' : ''} ${over ? 'over' : ''}">${pillText}</span>` : ''}
@@ -1248,8 +1256,10 @@ function renderDetail(p) {
         n = n + 1 > target ? 0 : n + 1;       // tap to add; wraps back to 0 at full
         setCount(p.id, c.id, c.cadence, n);
         done = n >= target;
+        const { text, fill } = quotaRemain(n, target, '', done, n > target);
+        const fillEl = node.querySelector('.check-fill'); if (fillEl) fillEl.style.width = fill + '%';
         const pill = node.querySelector('.count-pill');
-        if (pill) { pill.textContent = `${Math.min(n, target)}/${target}`; pill.classList.toggle('on', done); }
+        if (pill) { pill.textContent = text; pill.classList.toggle('on', done); }
       } else {
         done = !isDone(p.id, c.id, c.done);
         setDone(p.id, c.id, done);
@@ -2061,8 +2071,11 @@ function quotaRefresh() {
     const color = p.color || '#7c3aed';
     node.classList.toggle('on', done);
     const box = node.querySelector('.box'); if (box) { box.style.background = done ? color : ''; box.style.borderColor = done ? color : ''; }
+    const unitStr = (c.mode === 'sum' && c.unit) ? c.unit : '';
+    const { text, fill } = quotaRemain(raw, target, unitStr, done, over);
+    const fillEl = node.querySelector('.check-fill'); if (fillEl) fillEl.style.width = fill + '%';
     const pill = node.querySelector('.count-pill');
-    if (pill) { pill.textContent = `${round2(raw)}/${target}${c.unit ? ' ' + c.unit : ''}${over ? ' · ' + pct + '%' : ''}`; pill.classList.toggle('on', done); pill.classList.toggle('over', over); }
+    if (pill) { pill.textContent = text; pill.classList.toggle('on', done); pill.classList.toggle('over', over); }
   }
 }
 el('quotaPeriod').addEventListener('change', () => {
