@@ -282,11 +282,11 @@ function checklistState(p, c) {
   const d = isDone(p.id, c.id, c.done);
   return { raw: d ? target : 0, n: d ? target : 0, target, done: d, recurring: false };
 }
-// How a recurring quota reads when we show what's REMAINING: the pill text and
-// the depleting bar width (full when nothing done, empty when the target is met).
+// How a recurring quota reads: the pill shows what's REMAINING, while the bar
+// FILLS from the left with how much is DONE (so the empty right is what's left).
 function quotaRemain(raw, target, unitStr, done, over) {
   const remaining = Math.max(0, round2(target - raw));
-  const fill = target ? Math.max(0, Math.min(100, (remaining / target) * 100)) : 0;
+  const fill = target ? Math.max(0, Math.min(100, (raw / target) * 100)) : 0;
   const u = unitStr ? ' ' + unitStr : '';
   const text = over ? `✓ +${round2(raw - target)}${u}` : (done ? '✓ done' : `${remaining}${u} left`);
   return { text, fill };
