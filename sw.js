@@ -3,8 +3,8 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v41';        // bump this on every deploy — it's the single source of truth
-const BUILT = '2026-10-03';   // human-readable release date shown in the app
+const VERSION = 'v42';        // bump this on every deploy — it's the single source of truth
+const BUILT = '2026-10-09';   // human-readable release date shown in the app
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
 
@@ -34,7 +34,16 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  // Fetch each shell file fresh from the network (bypass the HTTP cache) so a
+  // new version never caches a stale app.js/styles.css under its new name.
+  e.waitUntil((async () => {
+    const c = await caches.open(SHELL);
+    await Promise.all(SHELL_FILES.map(async (f) => {
+      try { const r = await fetch(f, { cache: 'reload' }); if (r && r.ok) await c.put(f, r); }
+      catch { /* offline during install — it'll fill from network later */ }
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
