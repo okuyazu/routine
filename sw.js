@@ -3,8 +3,8 @@
 //   refreshes in the background so new versions appear on the next open
 //   (no more getting stuck on an old cached build).
 // - Data files: network-first, so edits from Claude/ChatGPT show up right away.
-const VERSION = 'v42';        // bump this on every deploy — it's the single source of truth
-const BUILT = '2026-10-09';   // human-readable release date shown in the app
+const VERSION = 'v43';        // bump this on every deploy — it's the single source of truth
+const BUILT = '2026-10-11';   // human-readable release date shown in the app
 const SHELL = `benchmarks-shell-${VERSION}`;
 const DATA = `benchmarks-data-${VERSION}`;
 
@@ -25,12 +25,7 @@ const SHELL_FILES = [
   './store.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  './finance/',
-  './finance/index.html',
-  './finance/styles.css',
-  './finance/app.js',
-  './finance/manifest.webmanifest'
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -73,7 +68,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
 
   // Data & note files: network-first, fall back to cache (so you can view offline).
-  if (url.pathname.includes('/data/') || url.pathname.includes('/projects/') || url.pathname.includes('/inbox/') || url.pathname.includes('/money/')) {
+  if (url.pathname.includes('/data/') || url.pathname.includes('/projects/') || url.pathname.includes('/inbox/')) {
     e.respondWith(
       fetch(e.request)
         .then((res) => {
