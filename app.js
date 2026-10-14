@@ -12,6 +12,7 @@ const view = el('view');
 
 let PROJECTS = [];   // loaded project objects
 let INBOX = [];      // captured ideas (data/inbox.json)
+let TODOS = [];      // to-do lists (todos/*.md)
 let META = {};       // manifest meta
 let overlay = loadOverlay();
 
@@ -464,6 +465,24 @@ function reflowMetrics(txt) {
 function fileTitle(path) {
   return path ? path.split('/').pop().replace(/\.md$/i, '') : '';
 }
+// A to-do list file: an optional "# Name" heading plus "- [ ] task" lines.
+function parseTodoMd(text, path) {
+  const lines = (text || '').split(/\r?\n/);
+  let name = '';
+  const h = (text || '').match(/^#\s+(.+)$/m);
+  if (h) name = h[1].trim();
+  if (!name) name = fileTitle(path) || 'To-do';
+  const tasks = [];
+  for (const line of lines) {
+    const m = line.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
+    if (m) tasks.push({ text: m[2].trim(), done: m[1].toLowerCase() === 'x' });
+  }
+  return { name, path, tasks, raw: text };
+}
+function buildTodoMd(name, tasks) {
+  const body = (tasks || []).map((t) => `- [${t.done ? 'x' : ' '}] ${t.text}`).join('\n');
+  return `# ${name}\n\n${body}${body ? '\n' : ''}`;
+}
 // Parse a "## History" Markdown table into { headers, rows:[{date, values:{label:num}}] }.
 function parseHistoryTable(sectionText) {
   const lines = (sectionText || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('|'));
@@ -655,6 +674,9 @@ async function loadData() {
   const ideaTexts = await Promise.all((manifest.inbox || []).map(getText));
   INBOX = ideaTexts.map((t, i) => (t ? parseIdeaMd(t, manifest.inbox[i]) : null)).filter(Boolean);
 
+  const todoTexts = await Promise.all((manifest.todos || []).map(getText));
+  TODOS = todoTexts.map((t, i) => (t != null ? parseTodoMd(t, manifest.todos[i]) : null)).filter(Boolean);
+
   el('appTitle').textContent = manifest.app || 'My Benchmarks';
   el('appTagline').textContent = manifest.tagline || '';
   document.title = manifest.app || 'My Benchmarks';
@@ -787,6 +809,8 @@ function router() {
 
   if (raw === 'inbox') {
     renderInbox();
+  } else if (raw === 'todos') {
+    renderTodos();
   } else if (raw.startsWith('idea/')) {
     const idea = findIdea(raw.slice(5));
     if (idea) { renderIdea(idea); backTarget = '#/inbox'; }
@@ -931,12 +955,172 @@ function renderHome() {
     ? `<div class="inbox-banner" data-go-inbox>💡 Idea Inbox
          <span>${openIdeas} ${openIdeas === 1 ? 'idea' : 'ideas'} waiting →</span></div>`
     : '';
-  view.innerHTML = `${banner}${buildDashboard()}<div class="section-label">Projects</div><div class="cards">${cards}</div>
+  const todoLeft = TODOS.reduce((s, l) => s + todoCount(l).left, 0);
+  const todoBanner = TODOS.length
+    ? `<div class="inbox-banner todos" data-go-todos>📝 To-dos
+         <span>${todoLeft} ${todoLeft === 1 ? 'task' : 'tasks'} left →</span></div>`
+    : '';
+  view.innerHTML = `${banner}${todoBanner}${buildDashboard()}<div class="section-label">Projects</div><div class="cards">${cards}</div>
     <button class="btn ghost" id="newProjectBtn" style="margin-top:14px">＋ New project</button>`;
   view.querySelectorAll('[data-go]').forEach((c) =>
     c.addEventListener('click', () => { location.hash = `#/${c.dataset.go}`; }));
   view.querySelector('[data-go-inbox]')?.addEventListener('click', () => { location.hash = '#/inbox'; });
+  view.querySelector('[data-go-todos]')?.addEventListener('click', () => { location.hash = '#/todos'; });
   el('newProjectBtn').addEventListener('click', openProjectForm);
+}
+
+/* ---------- to-do lists (todos/*.md, vault-backed) ---------- */
+function todoCount(list) {
+  const left = list.tasks.filter((t) => !t.done).length;
+  return { left, total: list.tasks.length };
+}
+async function saveTodoList(list, message) {
+  const cur = await ghGetFile(list.path);
+  await ghPutFile(list.path, buildTodoMd(list.name, list.tasks), message || `Update ${fileTitle(list.path)}`, cur ? cur.sha : undefined);
+}
+// Persist a changed list in the background, keeping the UI snappy. Re-renders
+// on failure so the screen never shows a change that didn't save.
+function persistTodo(list, message) {
+  saveTodoList(list, message).catch((e) => {
+    if (e && e.needToken) openTokenSheet('Connect GitHub once to sync your to-dos.');
+    loadData().then(renderTodos);
+  });
+}
+async function createTodoList(rawName) {
+  const name = String(rawName || '').replace(/[\\/:*?"<>|#]/g, '').trim();
+  if (!name) throw new Error('Give the list a name.');
+  const path = `todos/${name}.md`;
+  if (await ghGetFile(path)) throw new Error('A list with that name already exists.');
+  await ghPutFile(path, buildTodoMd(name, []), `Add to-do list: ${name}`);
+  const m = await ghGetFile('data/manifest.json');
+  const manifest = m ? JSON.parse(m.text) : { projects: [], inbox: [] };
+  manifest.todos = manifest.todos || [];
+  if (!manifest.todos.includes(path)) manifest.todos.push(path);
+  await ghPutFile('data/manifest.json', JSON.stringify(manifest, null, 2) + '\n', `List to-do: ${name}`, m ? m.sha : undefined);
+}
+async function deleteTodoList(path) {
+  const cur = await ghGetFile(path);
+  if (cur) await ghDeleteFile(path, `Delete ${fileTitle(path)}`, cur.sha);
+  const m = await ghGetFile('data/manifest.json');
+  if (m) {
+    const manifest = JSON.parse(m.text);
+    manifest.todos = (manifest.todos || []).filter((p) => p !== path);
+    await ghPutFile('data/manifest.json', JSON.stringify(manifest, null, 2) + '\n', `Unlist ${fileTitle(path)}`, m.sha);
+  }
+}
+
+function renderTodos() {
+  if (!TODOS.length) {
+    view.innerHTML = `<div class="empty">
+      <h3>To-do lists 📝</h3>
+      <p class="muted">Keep simple checklists — groceries, errands, anything. Saved on this device and
+        included in your backup &amp; sync.</p>
+      <div class="todo-new" style="max-width:320px;margin:18px auto 0">
+        <input id="newListName" type="text" placeholder="New list name (e.g. Groceries)" />
+        <button class="btn primary" id="newListBtn">Create list</button>
+      </div>
+      <p class="muted small err" id="todoErr" hidden></p>
+    </div>`;
+    wireNewList();
+    return;
+  }
+  const lists = TODOS.map((list) => {
+    const { left, total } = todoCount(list);
+    const items = list.tasks.map((t, i) => `
+      <div class="todo-item ${t.done ? 'on' : ''}" data-i="${i}">
+        <div class="box" ${t.done ? 'style="background:var(--accent);border-color:var(--accent)"' : ''}>${CHECK_SVG}</div>
+        <span class="ti-text">${esc(t.text)}</span>
+        <button class="ti-del" data-del="${i}" aria-label="Delete task" title="Delete">✕</button>
+      </div>`).join('');
+    const doneCount = total - left;
+    return `<div class="todo-list" data-list="${esc(list.path)}">
+      <div class="tl-head">
+        <h3>${esc(list.name)}</h3>
+        <span class="tl-count">${total ? (left ? left + ' left' : '✓ all done') : 'empty'}</span>
+        <button class="tl-del" aria-label="Delete list" title="Delete list">🗑</button>
+      </div>
+      <div class="tl-items">${items || '<p class="muted small" style="margin:4px 2px">No tasks yet.</p>'}</div>
+      <div class="tl-add">
+        <input type="text" placeholder="Add a task…" />
+        <button class="btn primary">Add</button>
+      </div>
+      ${doneCount ? `<button class="tl-clear" data-clear>Clear ${doneCount} done</button>` : ''}
+    </div>`;
+  }).join('');
+  view.innerHTML = `${lists}
+    <div class="section-label" style="margin-top:18px">New list</div>
+    <div class="todo-new">
+      <input id="newListName" type="text" placeholder="New list name (e.g. Work)" />
+      <button class="btn ghost" id="newListBtn">＋ Create list</button>
+    </div>
+    <p class="muted small err" id="todoErr" hidden></p>`;
+  wireTodos();
+  wireNewList();
+}
+
+function wireNewList() {
+  const go = async () => {
+    const name = el('newListName').value;
+    el('todoErr').hidden = true;
+    try {
+      await createTodoList(name);
+      await loadData(); renderTodos();
+    } catch (e) {
+      if (e && e.needToken) { openTokenSheet('Connect GitHub once, then create your list.'); return; }
+      el('todoErr').textContent = '⚠︎ ' + (e.message || e); el('todoErr').hidden = false;
+    }
+  };
+  el('newListBtn')?.addEventListener('click', go);
+  el('newListName')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+}
+
+function wireTodos() {
+  view.querySelectorAll('.todo-list').forEach((card) => {
+    const list = TODOS.find((l) => l.path === card.dataset.list);
+    if (!list) return;
+    // toggle a task
+    card.querySelectorAll('.todo-item').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.ti-del')) return;
+        const i = +row.dataset.i;
+        list.tasks[i].done = !list.tasks[i].done;
+        persistTodo(list);
+        renderTodos();
+      });
+    });
+    // delete a task
+    card.querySelectorAll('.ti-del').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      list.tasks.splice(+b.dataset.del, 1);
+      persistTodo(list);
+      renderTodos();
+    }));
+    // add a task
+    const addInput = card.querySelector('.tl-add input');
+    const addTask = () => {
+      const text = addInput.value.trim();
+      if (!text) return;
+      list.tasks.push({ text, done: false });
+      persistTodo(list);
+      renderTodos();
+      const again = view.querySelector(`.todo-list[data-list="${CSS.escape(list.path)}"] .tl-add input`);
+      if (again) again.focus(); // keep typing more tasks
+    };
+    card.querySelector('.tl-add .btn').addEventListener('click', addTask);
+    addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
+    // clear completed
+    card.querySelector('[data-clear]')?.addEventListener('click', () => {
+      list.tasks = list.tasks.filter((t) => !t.done);
+      persistTodo(list);
+      renderTodos();
+    });
+    // delete the whole list
+    card.querySelector('.tl-del').addEventListener('click', async () => {
+      if (!confirm(`Delete the “${list.name}” list? This can't be undone.`)) return;
+      try { await deleteTodoList(list.path); await loadData(); renderTodos(); }
+      catch (e) { if (e && e.needToken) openTokenSheet('Connect GitHub once to delete this list.'); else alert('Couldn’t delete: ' + (e.message || e)); }
+    });
+  });
 }
 
 /* ---------- new-project form ---------- */
@@ -1940,6 +2124,7 @@ async function boot() {
 window.addEventListener('hashchange', router);
 el('backBtn').addEventListener('click', () => { location.hash = el('backBtn').dataset.target || ''; });
 el('inboxBtn').addEventListener('click', () => { location.hash = '#/inbox'; });
+el('todoBtn').addEventListener('click', () => { location.hash = '#/todos'; });
 el('syncBtn').addEventListener('click', openSync);
 el('checkUpdate')?.addEventListener('click', async (e) => {
   e.preventDefault();

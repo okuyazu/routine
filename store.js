@@ -68,7 +68,7 @@
   async function allPaths() {
     const set = new Set(['data/manifest.json', 'money/accounts.md', 'money/budget.md', 'money/index.json']);
     const man = await vaultRead('data/manifest.json');
-    if (man) try { const m = JSON.parse(man); (m.projects || []).forEach((p) => set.add(p)); (m.inbox || []).forEach((p) => set.add(p)); } catch { /* */ }
+    if (man) try { const m = JSON.parse(man); (m.projects || []).forEach((p) => set.add(p)); (m.inbox || []).forEach((p) => set.add(p)); (m.todos || []).forEach((p) => set.add(p)); } catch { /* */ }
     const idx = await vaultRead('money/index.json');
     if (idx) try { (JSON.parse(idx).months || []).forEach((mo) => set.add('money/' + mo + '.md')); } catch { /* */ }
     (await LV.keys()).forEach((k) => set.add(k));
