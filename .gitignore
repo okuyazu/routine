@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 node_modules/
 .garth/
+
+# Self-hosted server data (your vault lives here — keep it out of git)
+vault/

@@ -56,6 +56,7 @@
   // Effective read. Local overlay wins in local mode (tombstone = deleted);
   // when a token is connected the repo is the source of truth.
   async function vaultRead(path) {
+    if (window.SERVER_MODE) return served(path);   // self-hosted server is the source of truth
     if (!window.isLocalMode()) return served(path);
     const v = await LV.get(path);
     if (v !== undefined) return v === TOMB ? null : v;

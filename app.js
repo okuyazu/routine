@@ -1570,7 +1570,15 @@ function buildProjectMd(f) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
+// Self-hosted server: read/write the vault straight off the workstation.
+const svUrl = (path) => (window.VAULT_BASE || '') + encodeURI(path);
 async function ghGetFile(path) {
+  if (window.SERVER_MODE) {
+    const r = await fetch(svUrl(path) + '?t=' + Date.now(), { cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error('Server read failed (' + r.status + ')');
+    return { sha: 'server', text: await r.text() };
+  }
   if (!GH.token) { // local mode: read the on-device overlay, else the base file
     const t = await vaultRead(path);
     return t == null ? null : { sha: 'local', text: t };
@@ -1582,6 +1590,11 @@ async function ghGetFile(path) {
   return { sha: j.sha, text: b64decode(j.content) };
 }
 async function ghPutFile(path, text, message, sha) {
+  if (window.SERVER_MODE) {
+    const r = await fetch(svUrl(path), { method: 'PUT', body: text });
+    if (!r.ok) throw new Error('Server write failed (' + r.status + ')');
+    return;
+  }
   if (!GH.token) { await LV.set(path, text); return; } // local mode: save on device
   const body = { message, content: b64encode(text), branch: GH.branch };
   if (sha) body.sha = sha;
@@ -1589,6 +1602,11 @@ async function ghPutFile(path, text, message, sha) {
   if (!r.ok) throw await ghError(r);
 }
 async function ghDeleteFile(path, message, sha) {
+  if (window.SERVER_MODE) {
+    const r = await fetch(svUrl(path), { method: 'DELETE' });
+    if (!r.ok) throw new Error('Server delete failed (' + r.status + ')');
+    return;
+  }
   if (!GH.token) { await LV.tomb(path); return; } // local mode: tombstone so it stays deleted
   const r = await fetch(ghUrl(path), { method: 'DELETE', headers: ghHeaders(), body: JSON.stringify({ message, sha, branch: GH.branch }) });
   if (!r.ok) throw await ghError(r);
@@ -2089,6 +2107,16 @@ async function doImportVault(file) {
     try {
       const bundle = JSON.parse(String(rd.result));
       const when = bundle.exportedAt ? new Date(bundle.exportedAt).toLocaleString() : 'an unknown date';
+      if (window.SERVER_MODE) {
+        if (!confirm(`Import this vault (exported ${when}) onto this server?\n\nIt writes the projects, to-dos, notes and your tallies to the workstation — shared by all your devices.`)) return;
+        el('vaultHint').textContent = 'Uploading to the server…';
+        const res = await fetch('__import__', { method: 'POST', body: JSON.stringify(bundle) });
+        if (!res.ok) throw new Error(await res.text());
+        const j = await res.json();
+        await svPullState(); await loadData(); router();
+        el('vaultHint').textContent = `Done — ${j.written} files written${j.removed ? ', ' + j.removed + ' removed' : ''}. Now shared across your devices.`;
+        return;
+      }
       if (!confirm(`Import this vault (exported ${when})?\n\nIt merges into what's on this device, keeping the newest version of each note.`)) return;
       el('vaultHint').textContent = 'Merging…';
       const r = await importVault(bundle, 'merge');
@@ -2100,11 +2128,65 @@ async function doImportVault(file) {
   rd.readAsText(file);
 }
 
+/* ---------- self-hosted server mode (shared data across devices) ----------
+ * When the app is served by server.py, reads/writes go to that workstation and
+ * the mutable "overlay" state (done toggles, weekly counts, history, captures)
+ * is kept in data/state.json on the server — so phone and PC share it live. */
+window.SERVER_MODE = false;
+const SV_OVERLAY_KEYS = [STATE_KEY, COUNT_KEY, HISTORY_KEY, CAPTURE_KEY];
+let svSuppressPush = false, svPushTimer = null, svRefreshing = false;
+async function detectServer() {
+  try {
+    const r = await fetch('__server__?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return !!(j && j.server === true);
+  } catch { return false; }
+}
+function svReloadOverlays() {
+  overlay = loadOverlay();
+  try { counts = JSON.parse(localStorage.getItem(COUNT_KEY)) || {}; } catch { counts = {}; }
+  try { periodHistory = JSON.parse(localStorage.getItem(HISTORY_KEY)) || {}; } catch { periodHistory = {}; }
+  CAPTURES = loadCaptures();
+}
+async function svPullState() {
+  svSuppressPush = true;
+  try {
+    const f = await ghGetFile('data/state.json');
+    if (f) { const ov = (JSON.parse(f.text) || {}).overlays || {}; for (const k of SV_OVERLAY_KEYS) if (ov[k] != null) localStorage.setItem(k, ov[k]); }
+  } catch { /* first run: no shared state yet */ }
+  svReloadOverlays();
+  svSuppressPush = false;
+}
+async function svPushState() {
+  const overlays = {};
+  for (const k of SV_OVERLAY_KEYS) { const v = localStorage.getItem(k); if (v != null) overlays[k] = v; }
+  try { await ghPutFile('data/state.json', JSON.stringify({ overlays })); } catch { /* retried on next change */ }
+}
+function svSchedulePush() { clearTimeout(svPushTimer); svPushTimer = setTimeout(svPushState, 600); }
+// Mirror overlay localStorage writes up to the server (server mode only).
+(() => {
+  const _set = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (k, v) => {
+    _set(k, v);
+    if (window.SERVER_MODE && !svSuppressPush && SV_OVERLAY_KEYS.includes(k)) svSchedulePush();
+  };
+})();
+// Returning to the tab: pull anything changed on another device.
+async function svRefresh() {
+  if (!window.SERVER_MODE || svRefreshing) return;
+  svRefreshing = true;
+  try { await svPullState(); await loadData(); router(); } catch { /* */ } finally { svRefreshing = false; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) svRefresh(); });
+
 /* ---------- boot ---------- */
 let lastLoad = 0;
 async function boot() {
   view.innerHTML = `<div class="loading"><div class="spinner"></div>Loading your benchmarks…</div>`;
   try {
+    window.SERVER_MODE = await detectServer();
+    if (window.SERVER_MODE) await svPullState(); // shared state before first render
     await handleStravaCallback(); // if returning from Strava OAuth, store tokens before loading
     await loadData();
     handleShareTarget();
