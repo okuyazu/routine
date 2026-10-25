@@ -179,8 +179,7 @@ function applyMilestoneAutochecks() {
     let ws = null, ms = null;
     for (const m of (p.milestones || [])) {
       const rule = milestoneAutoRule(m); if (!rule) continue;
-      const manual = overlay[p.id] && Object.prototype.hasOwnProperty.call(overlay[p.id], m.id);
-      if (manual || m.done) continue;
+      if (isDone(p.id, m.id, m.done)) continue;   // already done (in the file or by hand)
       const streak = rule.unit === 'month' ? (ms ??= projectMonthStreak(p)) : (ws ??= projectWeekStreak(p));
       if (streak >= rule.n) setDone(p.id, m.id, true);
     }
@@ -1320,6 +1319,7 @@ function handleShareTarget() {
 
 /* ---------- detail ---------- */
 function renderDetail(p) {
+  applyMilestoneAutochecks(); // reflect any just-reached streaks before drawing
   const color = p.color || '#7c3aed';
   // Metrics that mirror a checklist quota are now shown as the checklist's own
   // fill bar, so drop them from the Progress section to avoid duplication.
@@ -1434,24 +1434,14 @@ function renderDetail(p) {
       const c = p.checklist.find((x) => x.id === node.dataset.check);
       const target = c.count || 1;
       if (c.mode === 'sum' && isRecurring(c.cadence)) { openQuota(p, c, node); return; }
-      let done;
       if (isRecurring(c.cadence)) {
         let n = getCount(p.id, c.id, c.cadence);
         n = n + 1 > target ? 0 : n + 1;       // tap to add; wraps back to 0 at full
         setCount(p.id, c.id, c.cadence, n);
-        done = n >= target;
-        const { text, fill } = quotaRemain(n, target, '', done, n > target);
-        const fillEl = node.querySelector('.check-fill'); if (fillEl) fillEl.style.width = fill + '%';
-        const pill = node.querySelector('.count-pill');
-        if (pill) { pill.textContent = text; pill.classList.toggle('on', done); }
       } else {
-        done = !isDone(p.id, c.id, c.done);
-        setDone(p.id, c.id, done);
+        setDone(p.id, c.id, !isDone(p.id, c.id, c.done));
       }
-      node.classList.toggle('on', done);
-      const box = node.querySelector('.box');
-      box.style.background = done ? color : '';
-      box.style.borderColor = done ? color : '';
+      renderDetail(p); // re-draw: streak dots + any milestone that just auto-completed
     });
   });
   view.querySelectorAll('[data-ms]').forEach((node) => {
